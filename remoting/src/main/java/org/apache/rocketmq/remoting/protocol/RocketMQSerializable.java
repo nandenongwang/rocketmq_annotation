@@ -30,27 +30,34 @@ public class RocketMQSerializable {
     private static final Charset CHARSET_UTF8 = StandardCharsets.UTF_8;
 
     /**
-     *
+     * 命令编码
+     * 依次写入 命令码+语言码+版本号+请求ID+系统flag+remark长度+remark内容+扩展字段长度+扩展字段内容
      */
     public static byte[] rocketMQProtocolEncode(RemotingCommand cmd) {
-        // String remark
+
+        //region 计算 remark length & content
         byte[] remarkBytes = null;
         int remarkLen = 0;
         if (cmd.getRemark() != null && cmd.getRemark().length() > 0) {
             remarkBytes = cmd.getRemark().getBytes(CHARSET_UTF8);
             remarkLen = remarkBytes.length;
         }
+        //endregion
 
-        // HashMap<String, String> extFields
+        //region 计算extFileds map<string,string> length & content
         byte[] extFieldsBytes = null;
         int extLen = 0;
         if (cmd.getExtFields() != null && !cmd.getExtFields().isEmpty()) {
             extFieldsBytes = mapSerialize(cmd.getExtFields());
             extLen = extFieldsBytes.length;
         }
+        //endregion
 
+        //region 计算总长度
         int totalLen = calTotalLen(remarkLen, extLen);
+        //endregion
 
+        //region 依次写入命令内容
         ByteBuffer headerBuffer = ByteBuffer.allocate(totalLen);
         // int code(~32767)
         headerBuffer.putShort((short) cmd.getCode());
@@ -76,12 +83,14 @@ public class RocketMQSerializable {
         } else {
             headerBuffer.putInt(0);
         }
+        //endregion
 
         return headerBuffer.array();
     }
 
     /**
-     *
+     * 序列化map
+     * 依次写入 2字节keylength keycontent 4字节valuelength valuecontent
      */
     public static byte[] mapSerialize(HashMap<String, String> map) {
         // keySize+key+valSize+val
@@ -126,29 +135,22 @@ public class RocketMQSerializable {
     }
 
     /**
-     *
+     * 计算命令总长度
+     * 2字节语言
      */
-    private static int calTotalLen(int remark, int ext) {
-        // int code(~32767)
-        int length = 2
-                // LanguageCode language
-                + 1
-                // int version(~32767)
-                + 2
-                // int opaque
-                + 4
-                // int flag
-                + 4
-                // String remark
-                + 4 + remark
-                // HashMap<String, String> extFields
-                + 4 + ext;
-
-        return length;
+    private static int calTotalLen(int remark/* remark content length */, int ext/* extFields content length */) {
+        return 2//命令码
+                + 1//语言码
+                + 2//版本
+                + 4//请求ID
+                + 4//系统flag
+                + 4 + remark//remark长度+remark内容
+                + 4 + ext;//扩展字段长度+扩展字段内容
     }
 
     /**
-     *
+     * 命令解码
+     * 按序列化顺序依次解析
      */
     public static RemotingCommand rocketMQProtocolDecode(final byte[] headerArray) {
         RemotingCommand cmd = new RemotingCommand();
