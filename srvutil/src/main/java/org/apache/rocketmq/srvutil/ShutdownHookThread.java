@@ -28,7 +28,7 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ShutdownHookThread extends Thread {
     private volatile boolean hasShutdown = false;
-    private AtomicInteger shutdownTimes = new AtomicInteger(0);
+    private final AtomicInteger shutdownTimes = new AtomicInteger(0);
     private final InternalLogger log;
     private final Callable callback;
 
