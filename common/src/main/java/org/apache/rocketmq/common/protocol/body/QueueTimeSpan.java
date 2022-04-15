@@ -18,47 +18,33 @@
 package org.apache.rocketmq.common.protocol.body;
 
 import java.util.Date;
+
+import lombok.Data;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+@Data
 public class QueueTimeSpan {
+    /**
+     * 查询的queue
+     */
     private MessageQueue messageQueue;
+    /**
+     * queue中最早消息时间戳
+     */
     private long minTimeStamp;
+    /**
+     * queue中最晚消息时间戳
+     */
     private long maxTimeStamp;
+    /**
+     * 消费进度时间戳
+     */
     private long consumeTimeStamp;
+    /**
+     * 消费延时 【查询时间 - 消费进度消息存储时间】
+     */
     private long delayTime;
-
-    public MessageQueue getMessageQueue() {
-        return messageQueue;
-    }
-
-    public void setMessageQueue(MessageQueue messageQueue) {
-        this.messageQueue = messageQueue;
-    }
-
-    public long getMinTimeStamp() {
-        return minTimeStamp;
-    }
-
-    public void setMinTimeStamp(long minTimeStamp) {
-        this.minTimeStamp = minTimeStamp;
-    }
-
-    public long getMaxTimeStamp() {
-        return maxTimeStamp;
-    }
-
-    public void setMaxTimeStamp(long maxTimeStamp) {
-        this.maxTimeStamp = maxTimeStamp;
-    }
-
-    public long getConsumeTimeStamp() {
-        return consumeTimeStamp;
-    }
-
-    public void setConsumeTimeStamp(long consumeTimeStamp) {
-        this.consumeTimeStamp = consumeTimeStamp;
-    }
 
     public String getMinTimeStampStr() {
         return UtilAll.formatDate(new Date(minTimeStamp), UtilAll.YYYY_MM_DD_HH_MM_SS_SSS);
@@ -72,11 +58,4 @@ public class QueueTimeSpan {
         return UtilAll.formatDate(new Date(consumeTimeStamp), UtilAll.YYYY_MM_DD_HH_MM_SS_SSS);
     }
 
-    public long getDelayTime() {
-        return delayTime;
-    }
-
-    public void setDelayTime(long delayTime) {
-        this.delayTime = delayTime;
-    }
 }
