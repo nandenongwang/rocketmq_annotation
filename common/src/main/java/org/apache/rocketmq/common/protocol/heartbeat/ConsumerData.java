@@ -28,25 +28,29 @@ import org.apache.rocketmq.common.consumer.ConsumeFromWhere;
 
 @Data
 public class ConsumerData {
+    /**
+     * 消费组
+     */
     private String groupName;
+    /**
+     * 消费类型
+     */
     private ConsumeType consumeType;
+    /**
+     * 消费模式
+     */
     private MessageModel messageModel;
+    /**
+     * 初始拉取偏移策略
+     */
     private ConsumeFromWhere consumeFromWhere;
+    /**
+     * 订阅配置
+     */
     private Set<SubscriptionData> subscriptionDataSet = new HashSet<>();
+    /**
+     * unit模式
+     */
+    @Deprecated
     private boolean unitMode;
-
-    public boolean isUnitMode() {
-        return unitMode;
-    }
-
-    public void setUnitMode(boolean isUnitMode) {
-        this.unitMode = isUnitMode;
-    }
-
-    @Override
-    public String toString() {
-        return "ConsumerData [groupName=" + groupName + ", consumeType=" + consumeType + ", messageModel="
-                + messageModel + ", consumeFromWhere=" + consumeFromWhere + ", unitMode=" + unitMode
-                + ", subscriptionDataSet=" + subscriptionDataSet + "]";
-    }
 }
