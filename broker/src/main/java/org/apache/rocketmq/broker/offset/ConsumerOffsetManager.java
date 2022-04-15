@@ -25,6 +25,9 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.BrokerPathConfigHelper;
 import org.apache.rocketmq.common.ConfigManager;
@@ -34,63 +37,30 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.protocol.RemotingSerializable;
 
+/**
+ * 消费进度管理组件
+ */
+@NoArgsConstructor
 public class ConsumerOffsetManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final String TOPIC_GROUP_SEPARATOR = "@";
 
-    private ConcurrentMap<String/* topic@group */, ConcurrentMap<Integer, Long>> offsetTable =
-            new ConcurrentHashMap<String, ConcurrentMap<Integer, Long>>(512);
+    @Getter
+    @Setter
+    private ConcurrentMap<String/* topic@group */, ConcurrentMap<Integer/* queueId */, Long>> offsetTable = new ConcurrentHashMap<>(512);
 
     private transient BrokerController brokerController;
-
-    public ConsumerOffsetManager() {
-    }
 
     public ConsumerOffsetManager(BrokerController brokerController) {
         this.brokerController = brokerController;
     }
 
-    public void scanUnsubscribedTopic() {
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
-            String topicAtGroup = next.getKey();
-            String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
-            if (arrays.length == 2) {
-                String topic = arrays[0];
-                String group = arrays[1];
-
-                if (null == brokerController.getConsumerManager().findSubscriptionData(group, topic)
-                        && this.offsetBehindMuchThanData(topic, next.getValue())) {
-                    it.remove();
-                    log.warn("remove topic offset, {}", topicAtGroup);
-                }
-            }
-        }
-    }
-
-    //queue的offset是否比存储的消息的最小offset还小
-    private boolean offsetBehindMuchThanData(final String topic, ConcurrentMap<Integer, Long> table) {
-        Iterator<Entry<Integer, Long>> it = table.entrySet().iterator();
-        boolean result = !table.isEmpty();
-
-        while (it.hasNext() && result) {
-            Entry<Integer, Long> next = it.next();
-            long minOffsetInStore = this.brokerController.getMessageStore().getMinOffsetInQueue(topic, next.getKey());
-            long offsetInPersist = next.getValue();
-            result = offsetInPersist <= minOffsetInStore;
-        }
-
-        return result;
-    }
-
-    //获取该consumergroup消费了哪些topic
-    public Set<String> whichTopicByConsumer(final String group) {
-        Set<String> topics = new HashSet<String>();
-
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
+    /**
+     * 消费组消费了哪些topic
+     */
+    public Set<String> whichTopicByConsumer(String group) {
+        Set<String> topics = new HashSet<>();
+        for (Entry<String, ConcurrentMap<Integer, Long>> next : this.offsetTable.entrySet()) {
             String topicAtGroup = next.getKey();
             String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
             if (arrays.length == 2) {
@@ -99,17 +69,15 @@ public class ConsumerOffsetManager extends ConfigManager {
                 }
             }
         }
-
         return topics;
     }
 
-    //获取该topic被哪些consumergroup消费了
+    /**
+     * topic被哪些消费组消费
+     */
     public Set<String> whichGroupByTopic(final String topic) {
-        Set<String> groups = new HashSet<String>();
-
-        Iterator<Entry<String, ConcurrentMap<Integer, Long>>> it = this.offsetTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, Long>> next = it.next();
+        Set<String> groups = new HashSet<>();
+        for (Entry<String, ConcurrentMap<Integer, Long>> next : this.offsetTable.entrySet()) {
             String topicAtGroup = next.getKey();
             String[] arrays = topicAtGroup.split(TOPIC_GROUP_SEPARATOR);
             if (arrays.length == 2) {
@@ -118,14 +86,11 @@ public class ConsumerOffsetManager extends ConfigManager {
                 }
             }
         }
-
         return groups;
     }
 
-    //更新consumergroup对topic下queue的offset
-    public void commitOffset(final String clientHost, final String group, final String topic, final int queueId,
-                             final long offset) {
-        // topic@group
+    //region 消费组提交消费进度
+    public void commitOffset(String clientHost, String group, String topic, int queueId, long offset) {
         String key = topic + TOPIC_GROUP_SEPARATOR + group;
         this.commitOffset(clientHost, key, queueId, offset);
     }
@@ -143,53 +108,29 @@ public class ConsumerOffsetManager extends ConfigManager {
             }
         }
     }
+    //endregion
 
-    //查询某consumergroup对topic某个queue的消费哦offset
-    public long queryOffset(final String group, final String topic, final int queueId) {
+    /**
+     * 查询消费组对特定queue的消费进度
+     */
+    public long queryOffset(String group, String topic, int queueId) {
         // topic@group
         String key = topic + TOPIC_GROUP_SEPARATOR + group;
         ConcurrentMap<Integer, Long> map = this.offsetTable.get(key);
         if (null != map) {
             Long offset = map.get(queueId);
-            if (offset != null)
+            if (offset != null) {
                 return offset;
+            }
         }
 
         return -1;
     }
 
-    public String encode() {
-        return this.encode(false);
-    }
-
-    @Override
-    public String configFilePath() {
-        return BrokerPathConfigHelper.getConsumerOffsetPath(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
-    }
-
-    @Override
-    public void decode(String jsonString) {
-        if (jsonString != null) {
-            ConsumerOffsetManager obj = RemotingSerializable.fromJson(jsonString, ConsumerOffsetManager.class);
-            if (obj != null) {
-                this.offsetTable = obj.offsetTable;
-            }
-        }
-    }
-
-    public String encode(final boolean prettyFormat) {
-        return RemotingSerializable.toJson(this, prettyFormat);
-    }
-
-    public ConcurrentMap<String, ConcurrentMap<Integer, Long>> getOffsetTable() {
-        return offsetTable;
-    }
-
-    public void setOffsetTable(ConcurrentHashMap<String, ConcurrentMap<Integer, Long>> offsetTable) {
-        this.offsetTable = offsetTable;
-    }
-
-    public Map<Integer, Long> queryMinOffsetInAllGroup(final String topic, final String filterGroups) {
+    /**
+     * 查询所有消费组 对指定topic的所有queue【排除filterGroups】消费进度中最小的进度
+     */
+    public Map<Integer/* queueId */, Long/* minOffset */> queryMinOffsetInAllGroup(final String topic, final String filterGroups) {
 
         Map<Integer, Long> queueMinOffset = new HashMap<>();
         Set<String> topicGroups = this.offsetTable.keySet();
@@ -220,17 +161,49 @@ public class ConsumerOffsetManager extends ConfigManager {
         return queueMinOffset;
     }
 
+    /**
+     * 查询消费组对topic所有queue的消费进度
+     */
     public Map<Integer, Long> queryOffset(final String group, final String topic) {
-        // topic@group
         String key = topic + TOPIC_GROUP_SEPARATOR + group;
         return this.offsetTable.get(key);
     }
 
-    public void cloneOffset(final String srcGroup, final String destGroup, final String topic) {
+    /**
+     * 将目标消费组进度拷贝至指定消费组进度
+     */
+    public void cloneOffset(String srcGroup, String destGroup, String topic) {
         ConcurrentMap<Integer, Long> offsets = this.offsetTable.get(topic + TOPIC_GROUP_SEPARATOR + srcGroup);
         if (offsets != null) {
-            this.offsetTable.put(topic + TOPIC_GROUP_SEPARATOR + destGroup, new ConcurrentHashMap<Integer, Long>(offsets));
+            this.offsetTable.put(topic + TOPIC_GROUP_SEPARATOR + destGroup, new ConcurrentHashMap<>(offsets));
         }
     }
+
+    //region 配置持久化相关
+    @Override
+    public String encode() {
+        return this.encode(false);
+    }
+
+    @Override
+    public String configFilePath() {
+        return BrokerPathConfigHelper.getConsumerOffsetPath(this.brokerController.getMessageStoreConfig().getStorePathRootDir());
+    }
+
+    @Override
+    public void decode(String jsonString) {
+        if (jsonString != null) {
+            ConsumerOffsetManager obj = RemotingSerializable.fromJson(jsonString, ConsumerOffsetManager.class);
+            if (obj != null) {
+                this.offsetTable = obj.offsetTable;
+            }
+        }
+    }
+
+    @Override
+    public String encode(final boolean prettyFormat) {
+        return RemotingSerializable.toJson(this, prettyFormat);
+    }
+    //endregion
 
 }
