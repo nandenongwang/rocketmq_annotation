@@ -1,22 +1,5 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.broker.topic;
 
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
@@ -26,6 +9,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import lombok.Getter;
+import lombok.NoArgsConstructor;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.BrokerPathConfigHelper;
 import org.apache.rocketmq.common.ConfigManager;
@@ -36,25 +21,27 @@ import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.constant.PermName;
 import org.apache.rocketmq.common.protocol.body.KVTable;
 import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
-import org.apache.rocketmq.common.sysflag.TopicSysFlag;
 import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+@NoArgsConstructor
 public class TopicConfigManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final long LOCK_TIMEOUT_MILLIS = 3000;
     private static final int SCHEDULE_TOPIC_QUEUE_NUM = 18;
 
     private transient final Lock lockTopicConfigTable = new ReentrantLock();
-
-    private final ConcurrentMap<String/* topic */, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(1024);
+    @Getter
+    private final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(1024);
+    @Getter
     private final DataVersion dataVersion = new DataVersion();
+
     private transient BrokerController brokerController;
 
-    public TopicConfigManager() {
-    }
-
+    /**
+     * 内置系统topic配置
+     */
     public TopicConfigManager(BrokerController brokerController) {
         this.brokerController = brokerController;
         {
@@ -100,6 +87,7 @@ public class TopicConfigManager extends ConfigManager {
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
         {
+
             String topic = this.brokerController.getBrokerConfig().getBrokerName();
             TopicConfig topicConfig = new TopicConfig(topic);
             TopicValidator.addSystemTopic(topic);
@@ -148,12 +136,17 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
-    public TopicConfig selectTopicConfig(final String topic) {
+    /**
+     * 查询topic配置
+     */
+    public TopicConfig selectTopicConfig(String topic) {
         return this.topicConfigTable.get(topic);
     }
 
-    public TopicConfig createTopicInSendMessageMethod(final String topic, final String defaultTopic,
-                                                      final String remoteAddress, final int clientDefaultTopicQueueNums, final int topicSysFlag) {
+    /**
+     * 接受消息时自动创建未知topic配置
+     */
+    public TopicConfig createTopicInSendMessageMethod(String topic, String defaultTopic, String remoteAddress, int clientDefaultTopicQueueNums, int topicSysFlag) {
         TopicConfig topicConfig = null;
         boolean createNew = false;
 
@@ -161,8 +154,9 @@ public class TopicConfigManager extends ConfigManager {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     topicConfig = this.topicConfigTable.get(topic);
-                    if (topicConfig != null)
+                    if (topicConfig != null) {
                         return topicConfig;
+                    }
 
                     TopicConfig defaultTopicConfig = this.topicConfigTable.get(defaultTopic);
                     if (defaultTopicConfig != null) {
@@ -175,9 +169,7 @@ public class TopicConfigManager extends ConfigManager {
                         if (PermName.isInherited(defaultTopicConfig.getPerm())) {
                             topicConfig = new TopicConfig(topic);
 
-                            int queueNums =
-                                    clientDefaultTopicQueueNums > defaultTopicConfig.getWriteQueueNums() ? defaultTopicConfig
-                                            .getWriteQueueNums() : clientDefaultTopicQueueNums;
+                            int queueNums = Math.min(clientDefaultTopicQueueNums, defaultTopicConfig.getWriteQueueNums());
 
                             if (queueNums < 0) {
                                 queueNums = 0;
@@ -226,14 +218,14 @@ public class TopicConfigManager extends ConfigManager {
         return topicConfig;
     }
 
-    public TopicConfig createTopicInSendMessageBackMethod(
-            final String topic,
-            final int clientDefaultTopicQueueNums,
-            final int perm,
-            final int topicSysFlag) {
+    /**
+     * 创建新topic配置并广播给 nameserver
+     */
+    public TopicConfig createTopicInSendMessageBackMethod(String topic, int clientDefaultTopicQueueNums, int perm, int topicSysFlag) {
         TopicConfig topicConfig = this.topicConfigTable.get(topic);
-        if (topicConfig != null)
+        if (topicConfig != null) {
             return topicConfig;
+        }
 
         boolean createNew = false;
 
@@ -241,8 +233,9 @@ public class TopicConfigManager extends ConfigManager {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     topicConfig = this.topicConfigTable.get(topic);
-                    if (topicConfig != null)
+                    if (topicConfig != null) {
                         return topicConfig;
+                    }
 
                     topicConfig = new TopicConfig(topic);
                     topicConfig.setReadQueueNums(clientDefaultTopicQueueNums);
@@ -270,10 +263,14 @@ public class TopicConfigManager extends ConfigManager {
         return topicConfig;
     }
 
-    public TopicConfig createTopicOfTranCheckMaxTime(final int clientDefaultTopicQueueNums, final int perm) {
+    /**
+     * 创建【存储事务检查失败，超过最大重试次数】的topic配置并广播给 nameserver
+     */
+    public TopicConfig createTopicOfTranCheckMaxTime(int clientDefaultTopicQueueNums, int perm) {
         TopicConfig topicConfig = this.topicConfigTable.get(TopicValidator.RMQ_SYS_TRANS_CHECK_MAX_TIME_TOPIC);
-        if (topicConfig != null)
+        if (topicConfig != null) {
             return topicConfig;
+        }
 
         boolean createNew = false;
 
@@ -281,8 +278,9 @@ public class TopicConfigManager extends ConfigManager {
             if (this.lockTopicConfigTable.tryLock(LOCK_TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                 try {
                     topicConfig = this.topicConfigTable.get(TopicValidator.RMQ_SYS_TRANS_CHECK_MAX_TIME_TOPIC);
-                    if (topicConfig != null)
+                    if (topicConfig != null) {
                         return topicConfig;
+                    }
 
                     topicConfig = new TopicConfig(TopicValidator.RMQ_SYS_TRANS_CHECK_MAX_TIME_TOPIC);
                     topicConfig.setReadQueueNums(clientDefaultTopicQueueNums);
@@ -310,51 +308,10 @@ public class TopicConfigManager extends ConfigManager {
         return topicConfig;
     }
 
-    public void updateTopicUnitFlag(final String topic, final boolean unit) {
-
-        TopicConfig topicConfig = this.topicConfigTable.get(topic);
-        if (topicConfig != null) {
-            int oldTopicSysFlag = topicConfig.getTopicSysFlag();
-            if (unit) {
-                topicConfig.setTopicSysFlag(TopicSysFlag.setUnitFlag(oldTopicSysFlag));
-            } else {
-                topicConfig.setTopicSysFlag(TopicSysFlag.clearUnitFlag(oldTopicSysFlag));
-            }
-
-            log.info("update topic sys flag. oldTopicSysFlag={}, newTopicSysFlag", oldTopicSysFlag,
-                    topicConfig.getTopicSysFlag());
-
-            this.topicConfigTable.put(topic, topicConfig);
-
-            this.dataVersion.nextVersion();
-
-            this.persist();
-            this.brokerController.registerBrokerAll(false, true, true);
-        }
-    }
-
-    public void updateTopicUnitSubFlag(final String topic, final boolean hasUnitSub) {
-        TopicConfig topicConfig = this.topicConfigTable.get(topic);
-        if (topicConfig != null) {
-            int oldTopicSysFlag = topicConfig.getTopicSysFlag();
-            if (hasUnitSub) {
-                topicConfig.setTopicSysFlag(TopicSysFlag.setUnitSubFlag(oldTopicSysFlag));
-            }
-
-            log.info("update topic sys flag. oldTopicSysFlag={}, newTopicSysFlag", oldTopicSysFlag,
-                    topicConfig.getTopicSysFlag());
-
-            this.topicConfigTable.put(topic, topicConfig);
-
-            this.dataVersion.nextVersion();
-
-            this.persist();
-            this.brokerController.registerBrokerAll(false, true, true);
-        }
-    }
-
-    //更新topic config
-    public void updateTopicConfig(final TopicConfig topicConfig) {
+    /**
+     * 更新topic配置并持久化
+     */
+    public void updateTopicConfig(TopicConfig topicConfig) {
         TopicConfig old = this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         if (old != null) {
             log.info("update topic config, old:[{}] new:[{}]", old, topicConfig);
@@ -367,8 +324,10 @@ public class TopicConfigManager extends ConfigManager {
         this.persist();
     }
 
-    //设置topicconfig中 order为true
-    public void updateOrderTopicConfig(final KVTable orderKVTableFromNs) {
+    /**
+     * 从nameserver kv表中找到需要变更为order的topic更新配置并持久化
+     */
+    public void updateOrderTopicConfig(KVTable orderKVTableFromNs) {
 
         if (orderKVTableFromNs != null && orderKVTableFromNs.getTable() != null) {
             boolean isChange = false;
@@ -401,7 +360,10 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
-    public boolean isOrderTopic(final String topic) {
+    /**
+     * 是否是顺序topic
+     */
+    public boolean isOrderTopic(String topic) {
         TopicConfig topicConfig = this.topicConfigTable.get(topic);
         if (topicConfig == null) {
             return false;
@@ -410,7 +372,10 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
-    public void deleteTopicConfig(final String topic) {
+    /**
+     * 删除topic并持久化
+     */
+    public void deleteTopicConfig(String topic) {
         TopicConfig old = this.topicConfigTable.remove(topic);
         if (old != null) {
             log.info("delete topic config OK, topic: {}", old);
@@ -421,6 +386,9 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
+    /**
+     * 封装topic 配置传输对象
+     */
     public TopicConfigSerializeWrapper buildTopicConfigSerializeWrapper() {
         TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
         topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);
@@ -428,6 +396,13 @@ public class TopicConfigManager extends ConfigManager {
         return topicConfigSerializeWrapper;
     }
 
+    private void printLoadDataWhenFirstBoot(TopicConfigSerializeWrapper tcs) {
+        for (Entry<String, TopicConfig> next : tcs.getTopicConfigTable().entrySet()) {
+            log.info("load exist local topic, {}", next.getValue().toString());
+        }
+    }
+
+    //region 配置持久化相关
     @Override
     public String encode() {
         return encode(false);
@@ -452,26 +427,12 @@ public class TopicConfigManager extends ConfigManager {
         }
     }
 
+    @Override
     public String encode(final boolean prettyFormat) {
         TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
         topicConfigSerializeWrapper.setTopicConfigTable(this.topicConfigTable);
         topicConfigSerializeWrapper.setDataVersion(this.dataVersion);
         return topicConfigSerializeWrapper.toJson(prettyFormat);
     }
-
-    private void printLoadDataWhenFirstBoot(final TopicConfigSerializeWrapper tcs) {
-        Iterator<Entry<String, TopicConfig>> it = tcs.getTopicConfigTable().entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String, TopicConfig> next = it.next();
-            log.info("load exist local topic, {}", next.getValue().toString());
-        }
-    }
-
-    public DataVersion getDataVersion() {
-        return dataVersion;
-    }
-
-    public ConcurrentMap<String, TopicConfig> getTopicConfigTable() {
-        return topicConfigTable;
-    }
+    //endregion
 }
