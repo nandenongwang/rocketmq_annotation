@@ -147,101 +147,136 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
     }
 
     @Override
-    public RemotingCommand processRequest(ChannelHandlerContext ctx,
-                                          RemotingCommand request) throws RemotingCommandException {
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
-
-
             case RequestCode.UPDATE_AND_CREATE_TOPIC:
-                //topic 创建、更新topic
+                //在TopicConfigManager新增topic配置并持久化
                 return this.updateAndCreateTopic(ctx, request);
             case RequestCode.DELETE_TOPIC_IN_BROKER:
-                //从topicmanager中移除该topicconfig 并让 messagestore清理未使用的topic数据
+                //删除topic配置文件
+                // 通知messagestore删除consumequeuepagecache和consumequeue文件
+                //清理commitlog中保存的offset
+                // 清理brokermanager中该topic的stat
                 return this.deleteTopic(ctx, request);
             case RequestCode.GET_ALL_TOPIC_CONFIG:
-                //直接返回topicmanager中topicConfigTable
+                //直接返回配置文件
                 return this.getAllTopicConfig(ctx, request);
-
-
             case RequestCode.UPDATE_BROKER_CONFIG:
+                //更新broker 配置 properties
                 return this.updateBrokerConfig(ctx, request);
             case RequestCode.GET_BROKER_CONFIG:
+                //获取broker 配置 properties
                 return this.getBrokerConfig(ctx, request);
             case RequestCode.SEARCH_OFFSET_BY_TIMESTAMP:
+                //二分查找 consumequeue获取offset
                 return this.searchOffsetByTimestamp(ctx, request);
             case RequestCode.GET_MAX_OFFSET:
-                //
+                //查询 queue 最大offset 直接查询该queue的consumequeue索引文件
                 return this.getMaxOffset(ctx, request);
             case RequestCode.GET_MIN_OFFSET:
-                //
+                //查询 queue 最小offset 直接查询该queue的consumequeue索引文件
                 return this.getMinOffset(ctx, request);
             case RequestCode.GET_EARLIEST_MSG_STORETIME:
+                //查询 queue 最早消息的存储时间 直接查询该consumequeue 最小offset、从commitlog取出该消息获取storetime
                 return this.getEarliestMsgStoretime(ctx, request);
             case RequestCode.GET_BROKER_RUNTIME_INFO:
+                //获取部分 broker 运行时统计数据
                 return this.getBrokerRuntimeInfo(ctx, request);
             case RequestCode.LOCK_BATCH_MQ:
+                //rebalance时clientId加锁
                 return this.lockBatchMQ(ctx, request);
             case RequestCode.UNLOCK_BATCH_MQ:
+                //relalance时clientId解锁
                 return this.unlockBatchMQ(ctx, request);
             case RequestCode.UPDATE_AND_CREATE_SUBSCRIPTIONGROUP:
+                //更新subscriptionGroupManager 中 subscriptionGroupTable
                 return this.updateAndCreateSubscriptionGroup(ctx, request);
             case RequestCode.GET_ALL_SUBSCRIPTIONGROUP_CONFIG:
+                //直接返回subscriptionGroupManager 中 subscriptionGroupTable
                 return this.getAllSubscriptionGroup(ctx, request);
             case RequestCode.DELETE_SUBSCRIPTIONGROUP:
+                //删除ubscriptionGroupManager中该consumergroup 配置并清理broker stat
                 return this.deleteSubscriptionGroup(ctx, request);
             case RequestCode.GET_TOPIC_STATS_INFO:
+                //获取topic 各个queue信息 最小最大offset、最后存储时间等
                 return this.getTopicStatsInfo(ctx, request);
             case RequestCode.GET_CONSUMER_CONNECTION_LIST:
+                //获取ConsumerManager中consumergroup下所有consumers
                 return this.getConsumerConnectionList(ctx, request);
             case RequestCode.GET_PRODUCER_CONNECTION_LIST:
+                //获取producerManager中producerrgroup下所有producer
                 return this.getProducerConnectionList(ctx, request);
             case RequestCode.GET_CONSUME_STATS:
+                //获取consumergroup对topic各个queue的消费信息 消费位置&tps queue信息: 最小最大offset最后存储时间等
                 return this.getConsumeStats(ctx, request);
             case RequestCode.GET_ALL_CONSUMER_OFFSET:
+                //直接返回 consumeroffsetmanager 中 offsetTable
                 return this.getAllConsumerOffset(ctx, request);
             case RequestCode.GET_ALL_DELAY_OFFSET:
+                //直接返回ScheduleMessageService中leveloffsettable
                 return this.getAllDelayOffset(ctx, request);
             case RequestCode.INVOKE_BROKER_TO_RESET_OFFSET:
+                //让consumergroup下所有消费者更新consumeoffset到指定时间位置
                 return this.resetOffset(ctx, request);
             case RequestCode.INVOKE_BROKER_TO_GET_CONSUMER_STATUS:
+                //请求consumegroup下每个consumer 获取每个consumer对不同queue的消费进度
                 return this.getConsumerStatus(ctx, request);
             case RequestCode.QUERY_TOPIC_CONSUME_BY_WHO:
+                //topic被哪些consumergroup消费
                 return this.queryTopicConsumeByWho(ctx, request);
             case RequestCode.REGISTER_FILTER_SERVER:
+                //给当前broker增加FilterServer
                 return this.registerFilterServer(ctx, request);
             case RequestCode.QUERY_CONSUME_TIME_SPAN:
+                //获取consumegroup对topic中每个queueId消费信息 最大最小落后时间等
                 return this.queryConsumeTimeSpan(ctx, request);
             case RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_BROKER:
+                //获取所有系统topics
                 return this.getSystemTopicListFromBroker(ctx, request);
             case RequestCode.CLEAN_EXPIRED_CONSUMEQUEUE:
+                //清理长期未消费消息都被删除的consume queue
                 return this.cleanExpiredConsumeQueue();
             case RequestCode.CLEAN_UNUSED_TOPIC:
+                //从topicmanager中获取最新topic 通知messagestore清理未使用的topic
                 return this.cleanUnusedTopic();
             case RequestCode.GET_CONSUMER_RUNNING_INFO:
+                //转发到特定consumer client 获取运行时状态
                 return this.getConsumerRunningInfo(ctx, request);
             case RequestCode.QUERY_CORRECTION_OFFSET:
+                //
                 return this.queryCorrectionOffset(ctx, request);
             case RequestCode.CONSUME_MESSAGE_DIRECTLY:
+                //给特定consumer client发送直接消费消息
                 return this.consumeMessageDirectly(ctx, request);
             case RequestCode.CLONE_GROUP_OFFSET:
+                //将源topic@src-consumegroup的offset 设置到topic@dest-consumegroup 中
                 return this.cloneGroupOffset(ctx, request);
             case RequestCode.VIEW_BROKER_STATS_DATA:
+                //获取broker运行stat min/hour/day
                 return ViewBrokerStatsData(ctx, request);
             case RequestCode.GET_BROKER_CONSUME_STATS:
+                //获取broker上所有topic的consumer信息
                 return fetchAllConsumeStatsInBroker(ctx, request);
             case RequestCode.QUERY_CONSUME_QUEUE:
+                //查询consumergroup订阅信息与consumequeue数据索引信息
                 return queryConsumeQueue(ctx, request);
             case RequestCode.UPDATE_AND_CREATE_ACL_CONFIG:
+                //创建AccessKey 的 AccessConfig
                 return updateAndCreateAccessConfig(ctx, request);
             case RequestCode.DELETE_ACL_CONFIG:
+                //删除AccessKey 的 AccessConfig
                 return deleteAccessConfig(ctx, request);
             case RequestCode.GET_BROKER_CLUSTER_ACL_INFO:
+                //获取acl 配置版本
                 return getBrokerAclConfigVersion(ctx, request);
             case RequestCode.UPDATE_GLOBAL_WHITE_ADDRS_CONFIG:
+                //更新acl config中白名单地址list
                 return updateGlobalWhiteAddrsConfig(ctx, request);
             case RequestCode.RESUME_CHECK_HALF_MESSAGE:
+                //恢复半消息 将消息投入 RMQ_SYS_TRANS_HALF_TOPIC中
                 return resumeCheckHalfMessage(ctx, request);
             case RequestCode.GET_BROKER_CLUSTER_ACL_CONFIG:
+                //获取 acl config配置
                 return getBrokerClusterAclConfig(ctx, request);
             default:
                 break;

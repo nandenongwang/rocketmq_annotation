@@ -159,8 +159,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
     }
 
     private void checkServiceState() {
-        if (this.serviceState != ServiceState.RUNNING)
+        if (this.serviceState != ServiceState.RUNNING) {
             throw new IllegalStateException(NOT_RUNNING_EXCEPTION_MESSAGE);
+        }
     }
 
     public void updateNameServerAddr(String newAddresses) {
@@ -168,10 +169,11 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
     }
 
     private synchronized void setSubscriptionType(SubscriptionType type) {
-        if (this.subscriptionType == SubscriptionType.NONE)
+        if (this.subscriptionType == SubscriptionType.NONE) {
             this.subscriptionType = type;
-        else if (this.subscriptionType != type)
+        } else if (this.subscriptionType != type) {
             throw new IllegalStateException(SUBSCRIPTION_CONFILCT_EXCEPTION_MESSAGE);
+        }
     }
 
     private void updateAssignedMessageQueue(String topic, Set<MessageQueue> assignedMessageQueue) {
@@ -291,7 +293,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         this.rebalanceImpl.setConsumerGroup(this.defaultLitePullConsumer.getConsumerGroup());
         this.rebalanceImpl.setMessageModel(this.defaultLitePullConsumer.getMessageModel());
         this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultLitePullConsumer.getAllocateMessageQueueStrategy());
-        this.rebalanceImpl.setmQClientFactory(this.mQClientFactory);
+        this.rebalanceImpl.setMQClientFactory(this.mQClientFactory);
     }
 
     private void initPullAPIWrapper() {
@@ -499,8 +501,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
     public synchronized List<MessageExt> poll(long timeout) {
         try {
             checkServiceState();
-            if (timeout < 0)
+            if (timeout < 0) {
                 throw new IllegalArgumentException("Timeout must not be negative");
+            }
 
             if (defaultLitePullConsumer.isAutoCommit()) {
                 maybeAutoCommit();
@@ -512,8 +515,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
             if (endTime - System.currentTimeMillis() > 0) {
                 while (consumeRequest != null && consumeRequest.getProcessQueue().isDropped()) {
                     consumeRequest = consumeRequestCache.poll(endTime - System.currentTimeMillis(), TimeUnit.MILLISECONDS);
-                    if (endTime - System.currentTimeMillis() <= 0)
+                    if (endTime - System.currentTimeMillis() <= 0) {
                         break;
+                    }
                 }
             }
 
@@ -637,8 +641,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
     public long committed(MessageQueue messageQueue) throws MQClientException {
         checkServiceState();
         long offset = this.offsetStore.readOffset(messageQueue, ReadOffsetType.MEMORY_FIRST_THEN_STORE);
-        if (offset == -2)
+        if (offset == -2) {
             throw new MQClientException("Fetch consume offset from broker exception", null);
+        }
         return offset;
     }
 
@@ -703,8 +708,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
                 if (consumeRequestCache.size() * defaultLitePullConsumer.getPullBatchSize() > defaultLitePullConsumer.getPullThresholdForAll()) {
                     scheduledThreadPoolExecutor.schedule(this, PULL_TIME_DELAY_MILLS_WHEN_FLOW_CONTROL, TimeUnit.MILLISECONDS);
-                    if ((consumeRequestFlowControlTimes++ % 1000) == 0)
+                    if ((consumeRequestFlowControlTimes++ % 1000) == 0) {
                         log.warn("The consume request count exceeds threshold {}, so do flow control, consume request count={}, flowControlTimes={}", consumeRequestCache.size(), consumeRequestFlowControlTimes);
+                    }
                     return;
                 }
 

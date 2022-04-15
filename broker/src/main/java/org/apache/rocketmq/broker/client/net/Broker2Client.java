@@ -54,7 +54,9 @@ import java.util.concurrent.ConcurrentMap;
 
 @AllArgsConstructor
 public class Broker2Client {
+
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
+
     private final BrokerController brokerController;
 
     /**
@@ -229,7 +231,7 @@ public class Broker2Client {
     }
 
     /**
-     *获取组内所有消费者状态 对各queue的消费进度
+     * 获取组内所有消费者状态 对各queue的消费进度
      */
     public RemotingCommand getConsumeStatus(String topic, String group, String originClientId) {
         RemotingCommand result = RemotingCommand.createResponseCommand(null);
@@ -297,4 +299,5 @@ public class Broker2Client {
         result.setBody(resBody.encode());
         return result;
     }
+
 }

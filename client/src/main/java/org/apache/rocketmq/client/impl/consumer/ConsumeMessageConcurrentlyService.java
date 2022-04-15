@@ -19,7 +19,6 @@ package org.apache.rocketmq.client.impl.consumer;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.BlockingQueue;
@@ -90,10 +89,12 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     /**
      * 每15分钟执行超时消息清理
      */
+    @Override
     public void start() {
         this.cleanExpireMsgExecutors.scheduleAtFixedRate(this::cleanExpireMsg, this.defaultMQPushConsumer.getConsumeTimeout(), this.defaultMQPushConsumer.getConsumeTimeout(), TimeUnit.MINUTES);
     }
 
+    @Override
     public void shutdown(long awaitTerminateMillis) {
         this.scheduledExecutorService.shutdown();
         ThreadUtils.shutdownGracefully(this.consumeExecutor, awaitTerminateMillis, TimeUnit.MILLISECONDS);

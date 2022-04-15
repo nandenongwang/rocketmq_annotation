@@ -17,12 +17,17 @@
 package org.apache.rocketmq.broker.client;
 
 import io.netty.channel.Channel;
+
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
+
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.var;
 import org.apache.rocketmq.broker.util.PositiveAtomicCounter;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
@@ -34,36 +39,30 @@ public class ProducerManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final long CHANNEL_EXPIRED_TIMEOUT = 1000 * 120;
     private static final int GET_AVAILABLE_CHANNEL_RETRY_COUNT = 3;
-    private final ConcurrentHashMap<String /* group name */, ConcurrentHashMap<Channel, ClientChannelInfo>> groupChannelTable =
-        new ConcurrentHashMap<>();
-    private final ConcurrentHashMap<String, Channel> clientChannelTable = new ConcurrentHashMap<>();
-    private PositiveAtomicCounter positiveAtomicCounter = new PositiveAtomicCounter();
+    @Getter
+    private final ConcurrentHashMap<String /* producergroup */, ConcurrentHashMap<Channel, ClientChannelInfo>> groupChannelTable = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String/* clientId */, Channel> clientChannelTable = new ConcurrentHashMap<>();
 
-    public ProducerManager() {
-    }
+    /**
+     * 递增计数器 用于事务检查随机选取producer channel
+     */
+    private final PositiveAtomicCounter positiveAtomicCounter = new PositiveAtomicCounter();
 
-    public ConcurrentHashMap<String, ConcurrentHashMap<Channel, ClientChannelInfo>> getGroupChannelTable() {
-        return groupChannelTable;
-    }
-
+    /**
+     * 移除并关闭默认2分钟未活跃的producer channel
+     */
     public void scanNotActiveChannel() {
-        for (final Map.Entry<String, ConcurrentHashMap<Channel, ClientChannelInfo>> entry : this.groupChannelTable
-                .entrySet()) {
-            final String group = entry.getKey();
-            final ConcurrentHashMap<Channel, ClientChannelInfo> chlMap = entry.getValue();
-
+        for (var entry : this.groupChannelTable.entrySet()) {
+            String group = entry.getKey();
+            ConcurrentHashMap<Channel, ClientChannelInfo> chlMap = entry.getValue();
             Iterator<Entry<Channel, ClientChannelInfo>> it = chlMap.entrySet().iterator();
             while (it.hasNext()) {
                 Entry<Channel, ClientChannelInfo> item = it.next();
-                // final Integer id = item.getKey();
-                final ClientChannelInfo info = item.getValue();
-
-                long diff = System.currentTimeMillis() - info.getLastUpdateTimestamp();
-                if (diff > CHANNEL_EXPIRED_TIMEOUT) {
+                ClientChannelInfo info = item.getValue();
+                if (System.currentTimeMillis() - info.getLastUpdateTimestamp() > CHANNEL_EXPIRED_TIMEOUT) {
                     it.remove();
                     clientChannelTable.remove(info.getClientId());
-                    log.warn(
-                            "SCAN: remove expired channel[{}] from ProducerManager groupChannelTable, producer group name: {}",
+                    log.warn("SCAN: remove expired channel[{}] from ProducerManager groupChannelTable, producer group name: {}",
                             RemotingHelper.parseChannelRemoteAddr(info.getChannel()), group);
                     RemotingUtil.closeChannel(info.getChannel());
                 }
@@ -71,19 +70,19 @@ public class ProducerManager {
         }
     }
 
+    /**
+     * 处理producer channel关闭事件
+     * 清理内存中该channel相关数据
+     */
     public synchronized void doChannelCloseEvent(final String remoteAddr, final Channel channel) {
         if (channel != null) {
-            for (final Map.Entry<String, ConcurrentHashMap<Channel, ClientChannelInfo>> entry : this.groupChannelTable
-                    .entrySet()) {
-                final String group = entry.getKey();
-                final ConcurrentHashMap<Channel, ClientChannelInfo> clientChannelInfoTable =
-                        entry.getValue();
-                final ClientChannelInfo clientChannelInfo =
-                        clientChannelInfoTable.remove(channel);
+            for (var entry : this.groupChannelTable.entrySet()) {
+                var group = entry.getKey();
+                var clientChannelInfoTable = entry.getValue();
+                var clientChannelInfo = clientChannelInfoTable.remove(channel);
                 if (clientChannelInfo != null) {
                     clientChannelTable.remove(clientChannelInfo.getClientId());
-                    log.info(
-                            "NETTY EVENT: remove channel[{}][{}] from ProducerManager groupChannelTable, producer group: {}",
+                    log.info("NETTY EVENT: remove channel[{}][{}] from ProducerManager groupChannelTable, producer group: {}",
                             clientChannelInfo.toString(), remoteAddr, group);
                 }
 
@@ -91,29 +90,31 @@ public class ProducerManager {
         }
     }
 
+    /**
+     * 注册并管理新的producer组客户端
+     */
     public synchronized void registerProducer(final String group, final ClientChannelInfo clientChannelInfo) {
-        ClientChannelInfo clientChannelInfoFound = null;
-
         ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(group);
         if (null == channelTable) {
             channelTable = new ConcurrentHashMap<>();
             this.groupChannelTable.put(group, channelTable);
         }
 
-        clientChannelInfoFound = channelTable.get(clientChannelInfo.getChannel());
+        ClientChannelInfo clientChannelInfoFound = channelTable.get(clientChannelInfo.getChannel());
         if (null == clientChannelInfoFound) {
             channelTable.put(clientChannelInfo.getChannel(), clientChannelInfo);
             clientChannelTable.put(clientChannelInfo.getClientId(), clientChannelInfo.getChannel());
-            log.info("new producer connected, group: {} channel: {}", group,
-                    clientChannelInfo.toString());
+            log.info("new producer connected, group: {} channel: {}", group, clientChannelInfo.toString());
         }
-
 
         if (clientChannelInfoFound != null) {
             clientChannelInfoFound.setLastUpdateTimestamp(System.currentTimeMillis());
         }
     }
 
+    /**
+     * 移除管理的producer channel
+     */
     public synchronized void unregisterProducer(final String group, final ClientChannelInfo clientChannelInfo) {
         ConcurrentHashMap<Channel, ClientChannelInfo> channelTable = this.groupChannelTable.get(group);
         if (null != channelTable && !channelTable.isEmpty()) {
@@ -131,6 +132,9 @@ public class ProducerManager {
         }
     }
 
+    /**
+     * 获取可用producer channel 用于检查事务消息状态
+     */
     public Channel getAvailableChannel(String groupId) {
         if (groupId == null) {
             return null;
@@ -171,6 +175,9 @@ public class ProducerManager {
         return lastActiveChannel;
     }
 
+    /**
+     * 查询channel
+     */
     public Channel findChannel(String clientId) {
         return clientChannelTable.get(clientId);
     }
