@@ -17,6 +17,11 @@
 
 package org.apache.rocketmq.remoting.protocol;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
+@Getter
+@AllArgsConstructor
 public enum LanguageCode {
     JAVA((byte) 0),
     CPP((byte) 1),
@@ -31,12 +36,11 @@ public enum LanguageCode {
     PHP((byte) 10),
     OMS((byte) 11);
 
-    private byte code;
+    private final byte code;
 
-    LanguageCode(byte code) {
-        this.code = code;
-    }
-
+    /**
+     * 获取语言类型
+     */
     public static LanguageCode valueOf(byte code) {
         for (LanguageCode languageCode : LanguageCode.values()) {
             if (languageCode.getCode() == code) {
@@ -46,7 +50,4 @@ public enum LanguageCode {
         return null;
     }
 
-    public byte getCode() {
-        return code;
-    }
 }

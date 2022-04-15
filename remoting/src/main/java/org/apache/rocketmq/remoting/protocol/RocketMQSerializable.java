@@ -18,13 +18,20 @@ package org.apache.rocketmq.remoting.protocol;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
 
+/**
+ * RocketMQ 自定义序列化
+ */
 public class RocketMQSerializable {
-    private static final Charset CHARSET_UTF8 = Charset.forName("UTF-8");
+    private static final Charset CHARSET_UTF8 = StandardCharsets.UTF_8;
 
+    /**
+     *
+     */
     public static byte[] rocketMQProtocolEncode(RemotingCommand cmd) {
         // String remark
         byte[] remarkBytes = null;
@@ -73,10 +80,14 @@ public class RocketMQSerializable {
         return headerBuffer.array();
     }
 
+    /**
+     *
+     */
     public static byte[] mapSerialize(HashMap<String, String> map) {
         // keySize+key+valSize+val
-        if (null == map || map.isEmpty())
+        if (null == map || map.isEmpty()) {
             return null;
+        }
 
         int totalLength = 0;
         int kvLength;
@@ -85,10 +96,10 @@ public class RocketMQSerializable {
             Map.Entry<String, String> entry = it.next();
             if (entry.getKey() != null && entry.getValue() != null) {
                 kvLength =
-                    // keySize + Key
-                    2 + entry.getKey().getBytes(CHARSET_UTF8).length
-                        // valSize + val
-                        + 4 + entry.getValue().getBytes(CHARSET_UTF8).length;
+                        // keySize + Key
+                        2 + entry.getKey().getBytes(CHARSET_UTF8).length
+                                // valSize + val
+                                + 4 + entry.getValue().getBytes(CHARSET_UTF8).length;
                 totalLength += kvLength;
             }
         }
@@ -114,25 +125,31 @@ public class RocketMQSerializable {
         return content.array();
     }
 
+    /**
+     *
+     */
     private static int calTotalLen(int remark, int ext) {
         // int code(~32767)
         int length = 2
-            // LanguageCode language
-            + 1
-            // int version(~32767)
-            + 2
-            // int opaque
-            + 4
-            // int flag
-            + 4
-            // String remark
-            + 4 + remark
-            // HashMap<String, String> extFields
-            + 4 + ext;
+                // LanguageCode language
+                + 1
+                // int version(~32767)
+                + 2
+                // int opaque
+                + 4
+                // int flag
+                + 4
+                // String remark
+                + 4 + remark
+                // HashMap<String, String> extFields
+                + 4 + ext;
 
         return length;
     }
 
+    /**
+     *
+     */
     public static RemotingCommand rocketMQProtocolDecode(final byte[] headerArray) {
         RemotingCommand cmd = new RemotingCommand();
         ByteBuffer headerBuffer = ByteBuffer.wrap(headerArray);
@@ -164,17 +181,24 @@ public class RocketMQSerializable {
         return cmd;
     }
 
+    /**
+     * 反序列化map
+     * 依次读取key&value长度和内容 如；length content length content length content length content
+     */
     public static HashMap<String, String> mapDeserialize(byte[] bytes) {
-        if (bytes == null || bytes.length <= 0)
+        if (bytes == null || bytes.length <= 0) {
             return null;
+        }
 
-        HashMap<String, String> map = new HashMap<String, String>();
+        HashMap<String, String> map = new HashMap<>();
         ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
 
         short keySize;
         byte[] keyContent;
+
         int valSize;
         byte[] valContent;
+
         while (byteBuffer.hasRemaining()) {
             keySize = byteBuffer.getShort();
             keyContent = new byte[keySize];
@@ -189,6 +213,9 @@ public class RocketMQSerializable {
         return map;
     }
 
+    /**
+     * 字符串是否为空
+     */
     public static boolean isBlank(String str) {
         int strLen;
         if (str == null || (strLen = str.length()) == 0) {
