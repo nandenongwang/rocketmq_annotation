@@ -29,11 +29,17 @@ import org.apache.rocketmq.client.exception.RequestTimeoutException;
 import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.logging.InternalLogger;
 
+/**
+ * RPC消息futuretable
+ */
 public class RequestFutureTable {
     private static final InternalLogger log = ClientLogger.getLog();
     @Getter
     private static final ConcurrentHashMap<String, RequestResponseFuture> requestFutureTable = new ConcurrentHashMap<>();
 
+    /**
+     * 扫描异步RPC消息超时请求 执行异常回调
+     */
     public static void scanExpiredRequest() {
         List<RequestResponseFuture> rfList = new LinkedList<>();
         Iterator<Map.Entry<String, RequestResponseFuture>> it = requestFutureTable.entrySet().iterator();
