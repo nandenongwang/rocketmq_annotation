@@ -19,6 +19,8 @@ package org.apache.rocketmq.broker.processor;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.broker.mqtrace.SendMessageContext;
 import org.apache.rocketmq.common.TopicConfig;
@@ -45,6 +47,10 @@ import org.apache.rocketmq.store.MessageExtBrokerInner;
 import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 消费者消费完RPC消息回复消费结果
+ * 经由broker转发给producerclient
+ */
 public class ReplyMessageProcessor extends AbstractSendMessageProcessor implements NettyRequestProcessor {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
@@ -52,10 +58,11 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         super(brokerController);
     }
 
-    //consumer 消费完消息后 reply该消息 broker通知 producer该消息已经消费掉 rpc效果
+    /**
+     * consumer 消费完消息后 reply该消息 broker通知 producer该消息已消费结果
+     */
     @Override
-    public RemotingCommand processRequest(ChannelHandlerContext ctx,
-        RemotingCommand request) throws RemotingCommandException {
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         SendMessageContext mqtraceContext = null;
         SendMessageRequestHeader requestHeader = parseRequestHeader(request);
         if (requestHeader == null) {
@@ -65,26 +72,26 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         mqtraceContext = buildMsgContext(ctx, requestHeader);
         this.executeSendMessageHookBefore(ctx, request, mqtraceContext);
 
+        //处理消息
         RemotingCommand response = this.processReplyMessageRequest(ctx, request, mqtraceContext, requestHeader);
 
         this.executeSendMessageHookAfter(response, mqtraceContext);
         return response;
     }
 
+    /**
+     * 根据命令码解析reply请求头
+     */
     @Override
     protected SendMessageRequestHeader parseRequestHeader(RemotingCommand request) throws RemotingCommandException {
         SendMessageRequestHeaderV2 requestHeaderV2 = null;
         SendMessageRequestHeader requestHeader = null;
         switch (request.getCode()) {
             case RequestCode.SEND_REPLY_MESSAGE_V2:
-                requestHeaderV2 =
-                    (SendMessageRequestHeaderV2) request
-                        .decodeCommandCustomHeader(SendMessageRequestHeaderV2.class);
+                requestHeaderV2 = (SendMessageRequestHeaderV2) request.decodeCommandCustomHeader(SendMessageRequestHeaderV2.class);
             case RequestCode.SEND_REPLY_MESSAGE:
                 if (null == requestHeaderV2) {
-                    requestHeader =
-                        (SendMessageRequestHeader) request
-                            .decodeCommandCustomHeader(SendMessageRequestHeader.class);
+                    requestHeader = (SendMessageRequestHeader) request.decodeCommandCustomHeader(SendMessageRequestHeader.class);
                 } else {
                     requestHeader = SendMessageRequestHeaderV2.createSendMessageRequestHeaderV1(requestHeaderV2);
                 }
@@ -94,12 +101,13 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         return requestHeader;
     }
 
-    private RemotingCommand processReplyMessageRequest(final ChannelHandlerContext ctx,
-        final RemotingCommand request,
-        final SendMessageContext sendMessageContext,
-        final SendMessageRequestHeader requestHeader) {
-        final RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
-        final SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
+    //region 推送至producer & 存储reply消息
+    private RemotingCommand processReplyMessageRequest(ChannelHandlerContext ctx,
+                                                       RemotingCommand request,
+                                                       SendMessageContext sendMessageContext,
+                                                       SendMessageRequestHeader requestHeader) {
+        RemotingCommand response = RemotingCommand.createResponseCommand(SendMessageResponseHeader.class);
+        SendMessageResponseHeader responseHeader = (SendMessageResponseHeader) response.readCustomHeader();
 
         response.setOpaque(request.getOpaque());
 
@@ -107,7 +115,7 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         response.addExtField(MessageConst.PROPERTY_TRACE_SWITCH, String.valueOf(this.brokerController.getBrokerConfig().isTraceOn()));
 
         log.debug("receive SendReplyMessage request command, {}", request);
-        final long startTimstamp = this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp();
+        long startTimstamp = this.brokerController.getBrokerConfig().getStartAcceptSendRequestTimeStamp();
         if (this.brokerController.getMessageStore().now() < startTimstamp) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
             response.setRemark(String.format("broker unable to service, until %s", UtilAll.timeMillisToHumanString2(startTimstamp)));
@@ -120,7 +128,7 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
             return response;
         }
 
-        final byte[] body = request.getBody();
+        byte[] body = request.getBody();
 
         int queueIdInt = requestHeader.getQueueId();
         TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(requestHeader.getTopic());
@@ -141,9 +149,11 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         msgInner.setStoreHost(this.getStoreHost());
         msgInner.setReconsumeTimes(requestHeader.getReconsumeTimes() == null ? 0 : requestHeader.getReconsumeTimes());
 
+        //将消费结果推送给producer
         PushReplyResult pushReplyResult = this.pushReplyMessage(ctx, requestHeader, msgInner);
         this.handlePushReplyResult(pushReplyResult, response, responseHeader, queueIdInt);
 
+        //是否需要存储replay消息
         if (this.brokerController.getBrokerConfig().isStoreReplyMessageEnable()) {
             PutMessageResult putMessageResult = this.brokerController.getMessageStore().putMessage(msgInner);
             this.handlePutMessageResult(putMessageResult, request, msgInner, responseHeader, sendMessageContext, queueIdInt);
@@ -152,9 +162,7 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         return response;
     }
 
-    private PushReplyResult pushReplyMessage(final ChannelHandlerContext ctx,
-        final SendMessageRequestHeader requestHeader,
-        final Message msg) {
+    private PushReplyResult pushReplyMessage(ChannelHandlerContext ctx, SendMessageRequestHeader requestHeader, Message msg) {
         ReplyMessageRequestHeader replyMessageRequestHeader = new ReplyMessageRequestHeader();
         replyMessageRequestHeader.setBornHost(ctx.channel().remoteAddress().toString());
         replyMessageRequestHeader.setStoreHost(this.getStoreHost().toString());
@@ -184,18 +192,15 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
                 replyMessageRequestHeader.setProperties(MessageDecoder.messageProperties2String(msg.getProperties()));
 
                 try {
+                    //请求producerclient
                     RemotingCommand pushResponse = this.brokerController.getBroker2Client().callClient(channel, request);
                     assert pushResponse != null;
-                    switch (pushResponse.getCode()) {
-                        case ResponseCode.SUCCESS: {
-                            pushReplyResult.setPushOk(true);
-                            break;
-                        }
-                        default: {
-                            pushReplyResult.setPushOk(false);
-                            pushReplyResult.setRemark("push reply message to " + senderId + "fail.");
-                            log.warn("push reply message to <{}> return fail, response remark: {}", senderId, pushResponse.getRemark());
-                        }
+                    if (pushResponse.getCode() == ResponseCode.SUCCESS) {
+                        pushReplyResult.setPushOk(true);
+                    } else {
+                        pushReplyResult.setPushOk(false);
+                        pushReplyResult.setRemark("push reply message to " + senderId + "fail.");
+                        log.warn("push reply message to <{}> return fail, response remark: {}", senderId, pushResponse.getRemark());
                     }
                 } catch (RemotingException | InterruptedException e) {
                     pushReplyResult.setPushOk(false);
@@ -215,8 +220,7 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         return pushReplyResult;
     }
 
-    private void handlePushReplyResult(PushReplyResult pushReplyResult, final RemotingCommand response,
-        final SendMessageResponseHeader responseHeader, int queueIdInt) {
+    private void handlePushReplyResult(PushReplyResult pushReplyResult, RemotingCommand response, SendMessageResponseHeader responseHeader, int queueIdInt) {
 
         if (!pushReplyResult.isPushOk()) {
             response.setCode(ResponseCode.SYSTEM_ERROR);
@@ -231,10 +235,16 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         }
     }
 
+    //endregion
+
+    /**
+     * 处理putmessage结果 主要更新broker和2B相关统计数据
+     */
     private void handlePutMessageResult(PutMessageResult putMessageResult,
-        final RemotingCommand request, final MessageExt msg,
-        final SendMessageResponseHeader responseHeader, SendMessageContext sendMessageContext,
-        int queueIdInt) {
+                                        RemotingCommand request, MessageExt msg,
+                                        SendMessageResponseHeader responseHeader,
+                                        SendMessageContext sendMessageContext,
+                                        int queueIdInt) {
         if (putMessageResult == null) {
             log.warn("process reply message, store putMessage return null");
             return;
@@ -256,16 +266,16 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
                 break;
             case MESSAGE_ILLEGAL:
                 log.warn(
-                    "the message is illegal, maybe msg properties length limit 32k.");
+                        "the message is illegal, maybe msg properties length limit 32k.");
                 break;
             case PROPERTIES_SIZE_EXCEEDED:
                 log.warn(
-                    "the message is illegal, maybe msg body or properties length not matched. msg body length limit 128k.");
+                        "the message is illegal, maybe msg body or properties length not matched. msg body length limit 128k.");
                 break;
             case SERVICE_NOT_AVAILABLE:
                 log.warn(
-                    "service not available now. It may be caused by one of the following reasons: " +
-                        "the broker's disk is full, messages are put to the slave, message store has been shut down, etc.");
+                        "service not available now. It may be caused by one of the following reasons: " +
+                                "the broker's disk is full, messages are put to the slave, message store has been shut down, etc.");
                 break;
             case OS_PAGECACHE_BUSY:
                 log.warn("[PC_SYNCHRONIZED]broker busy, start flow control for a while");
@@ -281,8 +291,7 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         String owner = request.getExtFields().get(BrokerStatsManager.COMMERCIAL_OWNER);
         if (putOk) {
             this.brokerController.getBrokerStatsManager().incTopicPutNums(msg.getTopic(), putMessageResult.getAppendMessageResult().getMsgNum(), 1);
-            this.brokerController.getBrokerStatsManager().incTopicPutSize(msg.getTopic(),
-                putMessageResult.getAppendMessageResult().getWroteBytes());
+            this.brokerController.getBrokerStatsManager().incTopicPutSize(msg.getTopic(), putMessageResult.getAppendMessageResult().getWroteBytes());
             this.brokerController.getBrokerStatsManager().incBrokerPutNums(putMessageResult.getAppendMessageResult().getMsgNum());
 
             responseHeader.setMsgId(putMessageResult.getAppendMessageResult().getMsgId());
@@ -316,29 +325,21 @@ public class ReplyMessageProcessor extends AbstractSendMessageProcessor implemen
         }
     }
 
+    @Data
+    static
     class PushReplyResult {
+        /**
+         * 推送结果
+         */
         boolean pushOk;
+        /**
+         * 失败描述
+         */
         String remark;
 
         public PushReplyResult(boolean pushOk) {
             this.pushOk = pushOk;
             remark = "";
-        }
-
-        public boolean isPushOk() {
-            return pushOk;
-        }
-
-        public void setPushOk(boolean pushOk) {
-            this.pushOk = pushOk;
-        }
-
-        public String getRemark() {
-            return remark;
-        }
-
-        public void setRemark(String remark) {
-            this.remark = remark;
         }
     }
 }
