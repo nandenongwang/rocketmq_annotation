@@ -17,6 +17,9 @@
 
 package org.apache.rocketmq.remoting.common;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+
 /**
  * For server, three SSL modes are supported: disabled, permissive and enforcing.
  * <ol>
@@ -25,18 +28,19 @@ package org.apache.rocketmq.remoting.common;
  *     <li><strong>enforcing:</strong> SSL is required, aka, non SSL connection will be rejected.</li>
  * </ol>
  */
+@AllArgsConstructor
+@Getter
 public enum TlsMode {
 
     DISABLED("disabled"),
     PERMISSIVE("permissive"),
     ENFORCING("enforcing");
 
-    private String name;
+    private final String name;
 
-    TlsMode(String name) {
-        this.name = name;
-    }
-
+    /**
+     * 获取tls模式
+     */
     public static TlsMode parse(String mode) {
         for (TlsMode tlsMode : TlsMode.values()) {
             if (tlsMode.name.equals(mode)) {
@@ -47,7 +51,4 @@ public enum TlsMode {
         return PERMISSIVE;
     }
 
-    public String getName() {
-        return name;
-    }
 }

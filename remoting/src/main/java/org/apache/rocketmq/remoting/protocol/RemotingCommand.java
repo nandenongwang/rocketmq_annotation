@@ -17,6 +17,7 @@
 package org.apache.rocketmq.remoting.protocol;
 
 import com.alibaba.fastjson.annotation.JSONField;
+
 import java.lang.annotation.Annotation;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
@@ -24,6 +25,10 @@ import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.apache.rocketmq.remoting.CommandCustomHeader;
 import org.apache.rocketmq.remoting.annotation.CFNotNull;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
@@ -31,18 +36,11 @@ import org.apache.rocketmq.remoting.exception.RemotingCommandException;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+@NoArgsConstructor
 public class RemotingCommand {
-    public static final String SERIALIZE_TYPE_PROPERTY = "rocketmq.serialize.type";
-    public static final String SERIALIZE_TYPE_ENV = "ROCKETMQ_SERIALIZE_TYPE";
-    public static final String REMOTING_VERSION_KEY = "rocketmq.remoting.version";
-    private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
-    private static final int RPC_TYPE = 0; // 0, REQUEST_COMMAND
-    private static final int RPC_ONEWAY = 1; // 0, RPC
-    private static final Map<Class<? extends CommandCustomHeader>, Field[]> CLASS_HASH_MAP = new HashMap<>();
-    private static final Map<Class, String> CANONICAL_NAME_CACHE = new HashMap<>();
-    // 1, Oneway
-    // 1, RESPONSE_COMMAND
-    private static final Map<Field, Boolean> NULLABLE_FIELD_CACHE = new HashMap<>();
+    private static InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
+
+    //region 扩展字段值类型规范名 【支持】
     private static final String STRING_CANONICAL_NAME = String.class.getCanonicalName();
     private static final String DOUBLE_CANONICAL_NAME_1 = Double.class.getCanonicalName();
     private static final String DOUBLE_CANONICAL_NAME_2 = double.class.getCanonicalName();
@@ -52,13 +50,26 @@ public class RemotingCommand {
     private static final String LONG_CANONICAL_NAME_2 = long.class.getCanonicalName();
     private static final String BOOLEAN_CANONICAL_NAME_1 = Boolean.class.getCanonicalName();
     private static final String BOOLEAN_CANONICAL_NAME_2 = boolean.class.getCanonicalName();
-    private static volatile int configVersion = -1;
-    private static AtomicInteger requestId = new AtomicInteger(0);
+    //endregion
 
+
+    /**
+     * 请求ID源
+     */
+    private static final AtomicInteger requestId = new AtomicInteger(0);
+
+    /**
+     * 默认序列化类型
+     */
+    @Getter
     private static SerializeType serializeTypeConfigInThisServer = SerializeType.JSON;
 
+    //region 从系统属性与环境变量中获取序列化类型 默认使用json序列化
+    public static String SERIALIZE_TYPE_PROPERTY = "rocketmq.serialize.type";
+    public static String SERIALIZE_TYPE_ENV = "ROCKETMQ_SERIALIZE_TYPE";
+
     static {
-        final String protocol = System.getProperty(SERIALIZE_TYPE_PROPERTY, System.getenv(SERIALIZE_TYPE_ENV));
+        String protocol = System.getProperty(SERIALIZE_TYPE_PROPERTY, System.getenv(SERIALIZE_TYPE_ENV));
         if (!isBlank(protocol)) {
             try {
                 serializeTypeConfigInThisServer = SerializeType.valueOf(protocol);
@@ -67,24 +78,79 @@ public class RemotingCommand {
             }
         }
     }
+    //endregion
 
+    /**
+     * 命令码
+     */
+    @Getter
+    @Setter
     private int code;
+
+    /**
+     * 语言类型
+     */
+    @Getter
+    @Setter
     private LanguageCode language = LanguageCode.JAVA;
+
+    /**
+     * 版本号
+     */
+    @Getter
+    @Setter
     private int version = 0;
-    //请求ID
+
+    /**
+     * 请求ID
+     */
+    @Getter
+    @Setter
     private int opaque = requestId.getAndIncrement();
+
+    /**
+     * 系统flag
+     */
+    @Getter
+    @Setter
     private int flag = 0;
+
+    /**
+     * remark
+     */
+    @Getter
+    @Setter
     private String remark;
+
+    /**
+     * 扩展字段 存放自定义命令头
+     */
+    @Getter
+    @Setter
     private HashMap<String, String> extFields;
+
+    /**
+     * 自定义命令头
+     */
     private transient CommandCustomHeader customHeader;
 
+    /**
+     * 序列化类型
+     */
+    @Getter
+    @Setter
     private SerializeType serializeTypeCurrentRPC = serializeTypeConfigInThisServer;
 
+    /**
+     * 命令体
+     */
+    @Getter
+    @Setter
     private transient byte[] body;
 
-    protected RemotingCommand() {
-    }
-
+    /**
+     * 根据命令码和自定义请求头创建命令
+     */
     public static RemotingCommand createRequestCommand(int code, CommandCustomHeader customHeader) {
         RemotingCommand cmd = new RemotingCommand();
         cmd.setCode(code);
@@ -92,6 +158,10 @@ public class RemotingCommand {
         setCmdVersion(cmd);
         return cmd;
     }
+
+    //region 设置命令版本号 默认从系统属性取值
+    public static String REMOTING_VERSION_KEY = "rocketmq.remoting.version";
+    private static volatile int configVersion = -1;
 
     private static void setCmdVersion(RemotingCommand cmd) {
         if (configVersion >= 0) {
@@ -105,13 +175,19 @@ public class RemotingCommand {
             }
         }
     }
+    //endregion
 
+    /**
+     * 创建错误响应命令
+     */
     public static RemotingCommand createResponseCommand(Class<? extends CommandCustomHeader> classHeader) {
         return createResponseCommand(RemotingSysResponseCode.SYSTEM_ERROR, "not set any response code", classHeader);
     }
 
-    public static RemotingCommand createResponseCommand(int code, String remark,
-        Class<? extends CommandCustomHeader> classHeader) {
+    /**
+     * 创建空响应命令
+     */
+    public static RemotingCommand createResponseCommand(int code, String remark, Class<? extends CommandCustomHeader> classHeader) {
         RemotingCommand cmd = new RemotingCommand();
         cmd.markResponseType();
         cmd.setCode(code);
@@ -120,11 +196,8 @@ public class RemotingCommand {
 
         if (classHeader != null) {
             try {
-                CommandCustomHeader objectHeader = classHeader.newInstance();
-                cmd.customHeader = objectHeader;
-            } catch (InstantiationException e) {
-                return null;
-            } catch (IllegalAccessException e) {
+                cmd.customHeader = classHeader.newInstance();
+            } catch (InstantiationException | IllegalAccessException e) {
                 return null;
             }
         }
@@ -136,12 +209,13 @@ public class RemotingCommand {
         return createResponseCommand(code, remark, null);
     }
 
-    public static RemotingCommand decode(final byte[] array) {
+    //region 命令解码 按编码逆序解码
+    public static RemotingCommand decode(byte[] array) {
         ByteBuffer byteBuffer = ByteBuffer.wrap(array);
         return decode(byteBuffer);
     }
 
-    public static RemotingCommand decode(final ByteBuffer byteBuffer) {
+    public static RemotingCommand decode(ByteBuffer byteBuffer) {
         int length = byteBuffer.limit();
         int oriHeaderLen = byteBuffer.getInt();
         int headerLength = getHeaderLength(oriHeaderLen);
@@ -183,56 +257,10 @@ public class RemotingCommand {
         return null;
     }
 
-    public static SerializeType getProtocolType(int source) {
-        return SerializeType.valueOf((byte) ((source >> 24) & 0xFF));
-    }
-
-    public static int createNewRequestId() {
-        return requestId.getAndIncrement();
-    }
-
-    public static SerializeType getSerializeTypeConfigInThisServer() {
-        return serializeTypeConfigInThisServer;
-    }
-
-    private static boolean isBlank(String str) {
-        int strLen;
-        if (str == null || (strLen = str.length()) == 0) {
-            return true;
-        }
-        for (int i = 0; i < strLen; i++) {
-            if (!Character.isWhitespace(str.charAt(i))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    public static byte[] markProtocolType(int source, SerializeType type) {
-        byte[] result = new byte[4];
-
-        result[0] = type.getCode();
-        result[1] = (byte) ((source >> 16) & 0xFF);
-        result[2] = (byte) ((source >> 8) & 0xFF);
-        result[3] = (byte) (source & 0xFF);
-        return result;
-    }
-
-    public void markResponseType() {
-        int bits = 1 << RPC_TYPE;
-        this.flag |= bits;
-    }
-
-    public CommandCustomHeader readCustomHeader() {
-        return customHeader;
-    }
-
-    public void writeCustomHeader(CommandCustomHeader customHeader) {
-        this.customHeader = customHeader;
-    }
-
-    public CommandCustomHeader decodeCommandCustomHeader(
-        Class<? extends CommandCustomHeader> classHeader) throws RemotingCommandException {
+    /**
+     * 解码自定义命令头 反射
+     */
+    public CommandCustomHeader decodeCommandCustomHeader(Class<? extends CommandCustomHeader> classHeader) throws RemotingCommandException {
         CommandCustomHeader objectHeader;
         try {
             objectHeader = classHeader.newInstance();
@@ -241,7 +269,6 @@ public class RemotingCommand {
         }
 
         if (this.extFields != null) {
-
             Field[] fields = getClazzFields(classHeader);
             for (Field field : fields) {
                 if (!Modifier.isStatic(field.getModifiers())) {
@@ -288,6 +315,62 @@ public class RemotingCommand {
 
         return objectHeader;
     }
+    //endregion
+
+    /**
+     * 创建请求ID 依次递增
+     */
+    public static int createNewRequestId() {
+        return requestId.getAndIncrement();
+    }
+
+    /**
+     * 判断字符串是否为空
+     */
+    private static boolean isBlank(String str) {
+        int strLen;
+        if (str == null || (strLen = str.length()) == 0) {
+            return true;
+        }
+        for (int i = 0; i < strLen; i++) {
+            if (!Character.isWhitespace(str.charAt(i))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    //region 协议类型编解码 4字节 1字节序列化类型code + 3字节头内容大小
+
+    public static SerializeType getProtocolType(int source/* 头内容大小*/) {
+        return SerializeType.valueOf((byte) ((source >> 24) & 0xFF));
+    }
+
+    public static byte[] markProtocolType(int source, SerializeType type) {
+        byte[] result = new byte[4];
+
+        result[0] = type.getCode();//序列化协议码 0-json 1-rocketmq
+        result[1] = (byte) ((source >> 16) & 0xFF);
+        result[2] = (byte) ((source >> 8) & 0xFF);
+        result[3] = (byte) (source & 0xFF);
+        return result;
+    }
+    //endregion
+
+    public CommandCustomHeader readCustomHeader() {
+        return customHeader;
+    }
+
+    public void writeCustomHeader(CommandCustomHeader customHeader) {
+        this.customHeader = customHeader;
+    }
+
+
+    //region 反射获取自定义命令头所有fields
+    /**
+     * 缓存自定义命令头所有fields 【避免频繁反射】
+     */
+    private static Map<Class<? extends CommandCustomHeader>, Field[]> CLASS_HASH_MAP = new HashMap<>();
 
     private Field[] getClazzFields(Class<? extends CommandCustomHeader> classHeader) {
         Field[] field = CLASS_HASH_MAP.get(classHeader);
@@ -300,6 +383,10 @@ public class RemotingCommand {
         }
         return field;
     }
+    //endregion
+
+    //region 判断field是否有@CFNotNull注解
+    private static Map<Field, Boolean> NULLABLE_FIELD_CACHE = new HashMap<>();
 
     private boolean isFieldNullable(Field field) {
         if (!NULLABLE_FIELD_CACHE.containsKey(field)) {
@@ -310,6 +397,10 @@ public class RemotingCommand {
         }
         return NULLABLE_FIELD_CACHE.get(field);
     }
+    //endregion
+
+    //region 获取类的规范名
+    private static Map<Class, String> CANONICAL_NAME_CACHE = new HashMap<>();
 
     private String getCanonicalName(Class clazz) {
         String name = CANONICAL_NAME_CACHE.get(clazz);
@@ -322,7 +413,9 @@ public class RemotingCommand {
         }
         return name;
     }
+    //endregion
 
+    //region 命令编码 【输出内容 4字节包总大小 +  4字节序列化类型&头内容大小 + 头内容 + 体内容】
     public ByteBuffer encode() {
         // 1> header length size
         int length = 4;
@@ -357,6 +450,9 @@ public class RemotingCommand {
         return result;
     }
 
+    /**
+     * 命令头编码
+     */
     private byte[] headerEncode() {
         this.makeCustomHeaderToNet();
         if (SerializeType.ROCKETMQ == serializeTypeCurrentRPC) {
@@ -366,11 +462,14 @@ public class RemotingCommand {
         }
     }
 
+    /**
+     * 将自定义头对象各field取出置于extFields map中
+     */
     public void makeCustomHeaderToNet() {
         if (this.customHeader != null) {
             Field[] fields = getClazzFields(customHeader.getClass());
             if (null == this.extFields) {
-                this.extFields = new HashMap<String, String>();
+                this.extFields = new HashMap<>();
             }
 
             for (Field field : fields) {
@@ -394,11 +493,13 @@ public class RemotingCommand {
         }
     }
 
+    //region  header编码 【输出内容 4字节包总大小 +  4字节序列化类型&头内容大小 + 头内容】
     public ByteBuffer encodeHeader() {
         return encodeHeader(this.body != null ? this.body.length : 0);
     }
 
-    public ByteBuffer encodeHeader(final int bodyLength) {
+    public ByteBuffer encodeHeader(int bodyLength) {
+        //region 计算 header长度
         // 1> header length size
         int length = 4;
 
@@ -410,8 +511,11 @@ public class RemotingCommand {
 
         // 3> body data length
         length += bodyLength;
+        //endregion
 
-        ByteBuffer result = ByteBuffer.allocate(4 + length - bodyLength);
+        ByteBuffer result = ByteBuffer.allocate(4/* 头大小 */ + length/* 4字节协议类型 + n字节头内容 */ - bodyLength);
+
+        //region 依次写入
 
         // length
         result.putInt(length);
@@ -423,9 +527,17 @@ public class RemotingCommand {
         result.put(headerData);
 
         result.flip();
+        //endregion
+
 
         return result;
     }
+    //endregion
+
+    //endregion
+
+    //region 设置 & 判断 是否是oneway命令 否则为RPC命令【系统flag第2bit位是否为1】
+    private static int RPC_ONEWAY = 1; // 0, RPC
 
     public void markOnewayRPC() {
         int bits = 1 << RPC_ONEWAY;
@@ -437,15 +549,26 @@ public class RemotingCommand {
         int bits = 1 << RPC_ONEWAY;
         return (this.flag & bits) == bits;
     }
+    //endregion
 
-    public int getCode() {
-        return code;
+    //region 设置 & 判断是否是响应命令 否则是请求命令 【系统flag第1bit位是否为1】
+    private static int RPC_TYPE = 0; // 0, REQUEST_COMMAND
+
+    public void markResponseType() {
+        int bits = 1 << RPC_TYPE;
+        this.flag |= bits;
     }
 
-    public void setCode(int code) {
-        this.code = code;
+    @JSONField(serialize = false)
+    public boolean isResponseType() {
+        int bits = 1 << RPC_TYPE;
+        return (this.flag & bits) == bits;
     }
+    //endregion
 
+    /**
+     * 获取命令类型 请求或响应
+     */
     @JSONField(serialize = false)
     public RemotingCommandType getType() {
         if (this.isResponseType()) {
@@ -455,71 +578,12 @@ public class RemotingCommand {
         return RemotingCommandType.REQUEST_COMMAND;
     }
 
-    @JSONField(serialize = false)
-    public boolean isResponseType() {
-        int bits = 1 << RPC_TYPE;
-        return (this.flag & bits) == bits;
-    }
-
-    public LanguageCode getLanguage() {
-        return language;
-    }
-
-    public void setLanguage(LanguageCode language) {
-        this.language = language;
-    }
-
-    public int getVersion() {
-        return version;
-    }
-
-    public void setVersion(int version) {
-        this.version = version;
-    }
-
-    public int getOpaque() {
-        return opaque;
-    }
-
-    public void setOpaque(int opaque) {
-        this.opaque = opaque;
-    }
-
-    public int getFlag() {
-        return flag;
-    }
-
-    public void setFlag(int flag) {
-        this.flag = flag;
-    }
-
-    public String getRemark() {
-        return remark;
-    }
-
-    public void setRemark(String remark) {
-        this.remark = remark;
-    }
-
-    public byte[] getBody() {
-        return body;
-    }
-
-    public void setBody(byte[] body) {
-        this.body = body;
-    }
-
-    public HashMap<String, String> getExtFields() {
-        return extFields;
-    }
-
-    public void setExtFields(HashMap<String, String> extFields) {
-        this.extFields = extFields;
-    }
-
+    /**
+     * 增加扩展字段
+     */
     public void addExtField(String key, String value) {
         if (null == extFields) {
-            extFields = new HashMap<String, String>();
+            extFields = new HashMap<>();
         }
         extFields.put(key, value);
     }
@@ -527,15 +591,8 @@ public class RemotingCommand {
     @Override
     public String toString() {
         return "RemotingCommand [code=" + code + ", language=" + language + ", version=" + version + ", opaque=" + opaque + ", flag(B)="
-            + Integer.toBinaryString(flag) + ", remark=" + remark + ", extFields=" + extFields + ", serializeTypeCurrentRPC="
-            + serializeTypeCurrentRPC + "]";
+                + Integer.toBinaryString(flag) + ", remark=" + remark + ", extFields=" + extFields + ", serializeTypeCurrentRPC="
+                + serializeTypeCurrentRPC + "]";
     }
 
-    public SerializeType getSerializeTypeCurrentRPC() {
-        return serializeTypeCurrentRPC;
-    }
-
-    public void setSerializeTypeCurrentRPC(SerializeType serializeTypeCurrentRPC) {
-        this.serializeTypeCurrentRPC = serializeTypeCurrentRPC;
-    }
 }
