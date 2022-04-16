@@ -80,25 +80,25 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
     @Override
     public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
-            //检查事务消息本地状态
+            //检查事务状态
             case RequestCode.CHECK_TRANSACTION_STATE:
                 return this.checkTransactionState(ctx, request);
-            //消费者有变更 需要重平衡
+            //通知消费者重平衡
             case RequestCode.NOTIFY_CONSUMER_IDS_CHANGED:
                 return this.notifyConsumerIdsChanged(ctx, request);
-            //更新消费端offset
+            //更新消费组offset
             case RequestCode.RESET_CONSUMER_CLIENT_OFFSET:
                 return this.resetOffset(ctx, request);
-            //获取topic下消费组各个queue的offset
+            //查询消费进度
             case RequestCode.GET_CONSUMER_STATUS_FROM_CLIENT:
                 return this.getConsumeStatus(ctx, request);
-            //获取所有订阅信息及运行时统计信息
+            //查询消费者运行统计
             case RequestCode.GET_CONSUMER_RUNNING_INFO:
                 return this.getConsumerRunningInfo(ctx, request);
-            //直接消费该消息
+            //直接消费消息
             case RequestCode.CONSUME_MESSAGE_DIRECTLY:
                 return this.consumeMessageDirectly(ctx, request);
-            //接收consumer reply的消息
+            //producer接收consumer消费完后reply的消息
             case RequestCode.PUSH_REPLY_MESSAGE_TO_CLIENT:
                 return this.receiveReplyMessage(ctx, request);
             default:
@@ -112,6 +112,9 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return false;
     }
 
+    /**
+     * broker检查producer事务消息状态 调用事务producer检查状态回调 完成后会发送endtransaction 消息
+     */
     public RemotingCommand checkTransactionState(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         CheckTransactionStateRequestHeader requestHeader = (CheckTransactionStateRequestHeader) request.decodeCommandCustomHeader(CheckTransactionStateRequestHeader.class);
         ByteBuffer byteBuffer = ByteBuffer.wrap(request.getBody());
@@ -124,11 +127,11 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
             if (null != transactionId && !"".equals(transactionId)) {
                 messageExt.setTransactionId(transactionId);
             }
-            final String group = messageExt.getProperty(MessageConst.PROPERTY_PRODUCER_GROUP);
+            String group = messageExt.getProperty(MessageConst.PROPERTY_PRODUCER_GROUP);
             if (group != null) {
                 MQProducerInner producer = this.mqClientFactory.selectProducer(group);
                 if (producer != null) {
-                    final String addr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
+                    String addr = RemotingHelper.parseChannelRemoteAddr(ctx.channel());
                     producer.checkTransactionState(addr, messageExt, requestHeader);
                 } else {
                     log.debug("checkTransactionState, pick producer by group[{}] failed", group);
@@ -143,6 +146,9 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return null;
     }
 
+    /**
+     * broekr 通知消费组消费者有变化需要重平衡
+     */
     private RemotingCommand notifyConsumerIdsChanged(ChannelHandlerContext ctx, RemotingCommand request) {
         try {
             NotifyConsumerIdsChangedRequestHeader requestHeader = (NotifyConsumerIdsChangedRequestHeader) request.decodeCommandCustomHeader(NotifyConsumerIdsChangedRequestHeader.class);
@@ -154,6 +160,9 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return null;
     }
 
+    /**
+     * 管理端重置消费组进度
+     */
     private RemotingCommand resetOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         ResetOffsetRequestHeader requestHeader = (ResetOffsetRequestHeader) request.decodeCommandCustomHeader(ResetOffsetRequestHeader.class);
         log.info("invoke reset offset operation from broker. brokerAddr={}, topic={}, group={}, timestamp={}",
@@ -167,6 +176,9 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return null;
     }
 
+    /**
+     * 查询consumer 消费组对topic所有queue的消费进度
+     */
     @Deprecated
     private RemotingCommand getConsumeStatus(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -179,6 +191,9 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
+    /**
+     * 查询consumer运行时统计信息
+     */
     private RemotingCommand getConsumerRunningInfo(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         GetConsumerRunningInfoRequestHeader requestHeader = (GetConsumerRunningInfoRequestHeader) request.decodeCommandCustomHeader(GetConsumerRunningInfoRequestHeader.class);
@@ -201,6 +216,11 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
+    //region directly消息
+
+    /**
+     * 直接消费消息 获取consumerlistener 直接消费
+     */
     private RemotingCommand consumeMessageDirectly(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         ConsumeMessageDirectlyResultRequestHeader requestHeader = (ConsumeMessageDirectlyResultRequestHeader) request.decodeCommandCustomHeader(ConsumeMessageDirectlyResultRequestHeader.class);
@@ -219,7 +239,13 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
 
         return response;
     }
+    //endregion
 
+    //region rpc消息
+
+    /**
+     * producer收到RPC请求响应
+     */
     private RemotingCommand receiveReplyMessage(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
 
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
@@ -268,9 +294,12 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
+    /**
+     * 调用producer 异步RPC请求成功回调
+     */
     private void processReplyMessage(MessageExt replyMsg) {
-        final String correlationId = replyMsg.getUserProperty(MessageConst.PROPERTY_CORRELATION_ID);
-        final RequestResponseFuture requestResponseFuture = RequestFutureTable.getRequestFutureTable().get(correlationId);
+        String correlationId = replyMsg.getUserProperty(MessageConst.PROPERTY_CORRELATION_ID);
+        RequestResponseFuture requestResponseFuture = RequestFutureTable.getRequestFutureTable().get(correlationId);
         if (requestResponseFuture != null) {
             requestResponseFuture.putResponseMessage(replyMsg);
 
@@ -287,4 +316,6 @@ public class ClientRemotingProcessor extends AsyncNettyRequestProcessor implemen
                     correlationId, bornHost));
         }
     }
+    //endregion
+
 }
