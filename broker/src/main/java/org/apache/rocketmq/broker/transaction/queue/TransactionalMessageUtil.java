@@ -25,14 +25,23 @@ public class TransactionalMessageUtil {
     public static final String REMOVETAG = "d";
     public static Charset charset = Charset.forName("utf-8");
 
+    /**
+     * 半消息topic
+     */
     public static String buildOpTopic() {
         return TopicValidator.RMQ_SYS_TRANS_OP_HALF_TOPIC;
     }
 
+    /**
+     * 提交消息topic
+     */
     public static String buildHalfTopic() {
         return TopicValidator.RMQ_SYS_TRANS_HALF_TOPIC;
     }
 
+    /**
+     * 内部【半消息topic|提交消息topic】消费组
+     */
     public static String buildConsumerGroup() {
         return MixAll.CID_SYS_RMQ_TRANS;
     }
