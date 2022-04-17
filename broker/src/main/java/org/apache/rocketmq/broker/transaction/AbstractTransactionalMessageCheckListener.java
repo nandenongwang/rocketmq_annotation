@@ -17,7 +17,11 @@
 package org.apache.rocketmq.broker.transaction;
 
 import io.netty.channel.Channel;
+
 import java.util.Random;
+
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.broker.BrokerController;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.message.MessageConst;
@@ -36,13 +40,22 @@ import java.util.concurrent.TimeUnit;
 public abstract class AbstractTransactionalMessageCheckListener {
     private static final InternalLogger LOGGER = InternalLoggerFactory.getLogger(LoggerName.TRANSACTION_LOGGER_NAME);
 
+    @Getter
+    @Setter
     private BrokerController brokerController;
 
+    /**
+     * 超最大次数topic queue数量
+     */
     //queue nums of topic TRANS_CHECK_MAX_TIME_TOPIC
     protected final static int TCMT_QUEUE_NUMS = 1;
+
     protected final Random random = new Random(System.currentTimeMillis());
 
-    private static ExecutorService executorService = new ThreadPoolExecutor(2, 5, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(2000), new ThreadFactory() {
+    /**
+     * 发送检查命令线程池
+     */
+    private static final ExecutorService executorService = new ThreadPoolExecutor(2, 5, 100, TimeUnit.SECONDS, new ArrayBlockingQueue<Runnable>(2000), new ThreadFactory() {
         @Override
         public Thread newThread(Runnable r) {
             Thread thread = new Thread(r);
@@ -58,6 +71,9 @@ public abstract class AbstractTransactionalMessageCheckListener {
         this.brokerController = brokerController;
     }
 
+    /**
+     * 发送检查请求
+     */
     public void sendCheckMessage(MessageExt msgExt) throws Exception {
         CheckTransactionStateRequestHeader checkTransactionStateRequestHeader = new CheckTransactionStateRequestHeader();
         checkTransactionStateRequestHeader.setCommitLogOffset(msgExt.getCommitLogOffset());
@@ -77,21 +93,17 @@ public abstract class AbstractTransactionalMessageCheckListener {
         }
     }
 
+    /**
+     * 处理事务消息 发送检查请求
+     */
     public void resolveHalfMsg(final MessageExt msgExt) {
-        executorService.execute(new Runnable() {
-            @Override
-            public void run() {
-                try {
-                    sendCheckMessage(msgExt);
-                } catch (Exception e) {
-                    LOGGER.error("Send check message error!", e);
-                }
+        executorService.execute(() -> {
+            try {
+                sendCheckMessage(msgExt);
+            } catch (Exception e) {
+                LOGGER.error("Send check message error!", e);
             }
         });
-    }
-
-    public BrokerController getBrokerController() {
-        return brokerController;
     }
 
     public void shutDown() {
@@ -99,19 +111,7 @@ public abstract class AbstractTransactionalMessageCheckListener {
     }
 
     /**
-     * Inject brokerController for this listener
-     *
-     * @param brokerController
-     */
-    public void setBrokerController(BrokerController brokerController) {
-        this.brokerController = brokerController;
-    }
-
-    /**
-     * In order to avoid check back unlimited, we will discard the message that have been checked more than a certain
-     * number of times.
-     *
-     * @param msgExt Message to be discarded.
+     * 处理丢弃事务消息
      */
     public abstract void resolveDiscardMsg(MessageExt msgExt);
 }
