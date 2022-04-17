@@ -16,36 +16,24 @@
  */
 package org.apache.rocketmq.broker.transaction;
 
+import lombok.Data;
 import org.apache.rocketmq.common.message.MessageExt;
 
+@Data
 public class OperationResult {
+
+    /**
+     * 查询的half消息
+     */
     private MessageExt prepareMessage;
 
+    /**
+     * 操作结果
+     */
     private int responseCode;
 
+    /**
+     * 失败原因
+     */
     private String responseRemark;
-
-    public MessageExt getPrepareMessage() {
-        return prepareMessage;
-    }
-
-    public void setPrepareMessage(MessageExt prepareMessage) {
-        this.prepareMessage = prepareMessage;
-    }
-
-    public int getResponseCode() {
-        return responseCode;
-    }
-
-    public void setResponseCode(int responseCode) {
-        this.responseCode = responseCode;
-    }
-
-    public String getResponseRemark() {
-        return responseRemark;
-    }
-
-    public void setResponseRemark(String responseRemark) {
-        this.responseRemark = responseRemark;
-    }
 }
