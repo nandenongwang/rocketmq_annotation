@@ -18,6 +18,10 @@ package org.apache.rocketmq.broker.util;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * 计数器 从集合中轮训选取资源
+ * producergroup中选取事务检查producer
+ */
 public class PositiveAtomicCounter {
     private static final int MASK = 0x7FFFFFFF;
     private final AtomicInteger atom;
