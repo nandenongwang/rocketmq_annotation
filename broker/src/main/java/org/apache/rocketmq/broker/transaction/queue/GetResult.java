@@ -16,26 +16,18 @@
  */
 package org.apache.rocketmq.broker.transaction.queue;
 
+import lombok.Data;
 import org.apache.rocketmq.client.consumer.PullResult;
 import org.apache.rocketmq.common.message.MessageExt;
 
+@Data
 public class GetResult {
+    /**
+     * half消息
+     */
     private MessageExt msg;
+    /**
+     * 拉取结果
+     */
     private PullResult pullResult;
-
-    public MessageExt getMsg() {
-        return msg;
-    }
-
-    public void setMsg(MessageExt msg) {
-        this.msg = msg;
-    }
-
-    public PullResult getPullResult() {
-        return pullResult;
-    }
-
-    public void setPullResult(PullResult pullResult) {
-        this.pullResult = pullResult;
-    }
 }
