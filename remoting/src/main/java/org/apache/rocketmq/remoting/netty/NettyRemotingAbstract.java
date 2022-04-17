@@ -216,7 +216,6 @@ public abstract class NettyRemotingAbstract {
                                             log.error(cmd.toString());
                                             log.error(response.toString());
                                         }
-                                    } else {
                                     }
                                 }
                             }
@@ -527,12 +526,12 @@ public abstract class NettyRemotingAbstract {
         }
     }
 
-    public void invokeOnewayImpl(final Channel channel, final RemotingCommand request, final long timeoutMillis)
+    public void invokeOnewayImpl(Channel channel, RemotingCommand request, long timeoutMillis)
             throws InterruptedException, RemotingTooMuchRequestException, RemotingTimeoutException, RemotingSendRequestException {
         request.markOnewayRPC();
         boolean acquired = this.semaphoreOneway.tryAcquire(timeoutMillis, TimeUnit.MILLISECONDS);
         if (acquired) {
-            final SemaphoreReleaseOnlyOnce once = new SemaphoreReleaseOnlyOnce(this.semaphoreOneway);
+            SemaphoreReleaseOnlyOnce once = new SemaphoreReleaseOnlyOnce(this.semaphoreOneway);
             try {
                 channel.writeAndFlush(request).addListener((ChannelFutureListener) f -> {
                     once.release();

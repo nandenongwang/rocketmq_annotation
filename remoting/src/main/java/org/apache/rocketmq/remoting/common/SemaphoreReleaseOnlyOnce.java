@@ -16,9 +16,12 @@
  */
 package org.apache.rocketmq.remoting.common;
 
+import lombok.Getter;
+
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+@Getter
 public class SemaphoreReleaseOnlyOnce {
     private final AtomicBoolean released = new AtomicBoolean(false);
     private final Semaphore semaphore;
@@ -35,7 +38,4 @@ public class SemaphoreReleaseOnlyOnce {
         }
     }
 
-    public Semaphore getSemaphore() {
-        return semaphore;
-    }
 }

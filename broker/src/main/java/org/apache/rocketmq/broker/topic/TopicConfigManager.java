@@ -219,7 +219,7 @@ public class TopicConfigManager extends ConfigManager {
     }
 
     /**
-     * 创建新topic配置并广播给 nameserver
+     * 创建死信topic配置并广播给 nameserver
      */
     public TopicConfig createTopicInSendMessageBackMethod(String topic, int clientDefaultTopicQueueNums, int perm, int topicSysFlag) {
         TopicConfig topicConfig = this.topicConfigTable.get(topic);

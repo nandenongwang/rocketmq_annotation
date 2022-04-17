@@ -18,6 +18,9 @@ import java.io.InputStreamReader;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * spi provider
+ */
 public class ServiceProvider {
 
     private final static Logger LOG = LoggerFactory

@@ -1001,7 +1001,7 @@ public class MQClientAPIImpl {
     }
 
     /**
-     * 消费失败返回消息到broker延时和重试队列中
+     * 消费失败返回消息到broker重试queue中
      */
     public void consumerSendMessageBack(String addr, MessageExt msg, String consumerGroup, int delayLevel, long timeoutMillis, int maxConsumeRetryTimes)
             throws RemotingException, MQBrokerException, InterruptedException {
