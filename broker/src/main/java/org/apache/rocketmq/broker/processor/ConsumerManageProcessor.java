@@ -50,19 +50,26 @@ public class ConsumerManageProcessor extends AsyncNettyRequestProcessor implemen
     }
 
     @Override
-    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
-            throws RemotingCommandException {
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
+            //region 查询组下消费者
+            //从ConsumerManager中获取消费组下所有消费者 clientId list
             case RequestCode.GET_CONSUMER_LIST_BY_GROUP:
-                //从ConsumerManager中获取消费组下所有消费者 clientId list
                 return this.getConsumerListByGroup(ctx, request);
+            //endregion
+
+            //region 更新消费进度
+            //更新ConsumerOffsetManager内存中该consumergroup对topic特定queue的offset
             case RequestCode.UPDATE_CONSUMER_OFFSET:
-                //更新ConsumerOffsetManager内存中该consumergroup对topic特定queue的offset
                 return this.updateConsumerOffset(ctx, request);
+            //endregion
+
+            //region 查询消费进度
+            //查询特定topic特定queue 下consumergroup的消费offset
+            //从ConsumerOffsetManager中获取 Map<"topic@consumergroup",Map<queueId,offset>>
             case RequestCode.QUERY_CONSUMER_OFFSET:
-                //查询特定topic特定queue 下consumergroup的消费offset
-                //从ConsumerOffsetManager中获取 Map<"topic@consumergroup",Map<queueId,offset>>
                 return this.queryConsumerOffset(ctx, request);
+            //endregion
             default:
                 break;
         }
@@ -102,8 +109,7 @@ public class ConsumerManageProcessor extends AsyncNettyRequestProcessor implemen
         return response;
     }
 
-    private RemotingCommand updateConsumerOffset(ChannelHandlerContext ctx, RemotingCommand request)
-            throws RemotingCommandException {
+    private RemotingCommand updateConsumerOffset(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(UpdateConsumerOffsetResponseHeader.class);
         UpdateConsumerOffsetRequestHeader requestHeader = (UpdateConsumerOffsetRequestHeader) request.decodeCommandCustomHeader(UpdateConsumerOffsetRequestHeader.class);
 
