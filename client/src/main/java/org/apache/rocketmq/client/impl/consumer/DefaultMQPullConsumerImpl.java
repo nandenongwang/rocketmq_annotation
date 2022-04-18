@@ -625,27 +625,40 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
         switch (this.serviceState) {
             case CREATE_JUST:
                 this.serviceState = ServiceState.START_FAILED;
-
+                //检查consumer配置
                 this.checkConfig();
 
                 this.copySubscription();
 
+                //region 同一主机下producer的instancename因相同 设置为pid
                 if (this.defaultMQPullConsumer.getMessageModel() == MessageModel.CLUSTERING) {
                     this.defaultMQPullConsumer.changeInstanceNameToPID();
                 }
+                //endregion
 
+                //region 获取 MQClientInstance
                 this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQPullConsumer, this.rpcHook);
+                //endregion
 
+                //region 配置pull型重平衡管理器
                 this.rebalanceImpl.setConsumerGroup(this.defaultMQPullConsumer.getConsumerGroup());
                 this.rebalanceImpl.setMessageModel(this.defaultMQPullConsumer.getMessageModel());
                 this.rebalanceImpl.setAllocateMessageQueueStrategy(this.defaultMQPullConsumer.getAllocateMessageQueueStrategy());
                 this.rebalanceImpl.setMQClientFactory(this.mQClientFactory);
+                //endregion
 
+                //region 初始化 pull api管理器
                 this.pullAPIWrapper = new PullAPIWrapper(
-                    mQClientFactory,
-                    this.defaultMQPullConsumer.getConsumerGroup(), isUnitMode());
-                this.pullAPIWrapper.registerFilterMessageHook(filterMessageHookList);
+                        mQClientFactory,
+                        this.defaultMQPullConsumer.getConsumerGroup(), isUnitMode());
 
+                this.pullAPIWrapper.registerFilterMessageHook(filterMessageHookList);
+                //endregion
+
+                //region 配置 & 初始化进度存储管理器
+                //广播模式 本地文件存储器
+                //默认集群模式 broker存储
+                //从进度存储器中重载消费组各个queue的消费进度 空
                 if (this.defaultMQPullConsumer.getOffsetStore() != null) {
                     this.offsetStore = this.defaultMQPullConsumer.getOffsetStore();
                 } else {
@@ -663,27 +676,37 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
                 }
 
                 this.offsetStore.load();
+                //endregion
 
+                //region MQClientInstance注册了新的consumer
+                //此时还未订阅topic 无需发送心跳让broker感知
                 boolean registerOK = mQClientFactory.registerConsumer(this.defaultMQPullConsumer.getConsumerGroup(), this);
                 if (!registerOK) {
                     this.serviceState = ServiceState.CREATE_JUST;
 
                     throw new MQClientException("The consumer group[" + this.defaultMQPullConsumer.getConsumerGroup()
-                        + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
-                        null);
+                            + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
+                            null);
                 }
+                //endregion
 
+                //region 启动 MQClientInstance
                 mQClientFactory.start();
+                //endregion
+
+                //region consumer 启动成功
                 log.info("the consumer [{}] start OK", this.defaultMQPullConsumer.getConsumerGroup());
                 this.serviceState = ServiceState.RUNNING;
+                //endregion
+
                 break;
             case RUNNING:
             case START_FAILED:
             case SHUTDOWN_ALREADY:
                 throw new MQClientException("The PullConsumer service state not OK, maybe started once, "
-                    + this.serviceState
-                    + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
-                    null);
+                        + this.serviceState
+                        + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
+                        null);
             default:
                 break;
         }

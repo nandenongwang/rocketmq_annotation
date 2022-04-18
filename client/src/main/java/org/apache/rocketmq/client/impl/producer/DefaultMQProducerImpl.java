@@ -182,60 +182,65 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     }
 
     public void start(final boolean startFactory) throws MQClientException {
-        switch (this.serviceState) {
-            case CREATE_JUST:
-                this.serviceState = ServiceState.START_FAILED;
 
-                this.checkConfig();
-
-                if (!this.defaultMQProducer.getProducerGroup().equals(MixAll.CLIENT_INNER_PRODUCER_GROUP)) {
-                    this.defaultMQProducer.changeInstanceNameToPID();
-                }
-
-                this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
-
-                boolean registerOK = mQClientFactory.registerProducer(this.defaultMQProducer.getProducerGroup(), this);
-                if (!registerOK) {
-                    this.serviceState = ServiceState.CREATE_JUST;
-                    throw new MQClientException("The producer group[" + this.defaultMQProducer.getProducerGroup()
-                            + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
-                            null);
-                }
-
-                this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
-
-                if (startFactory) {
-                    mQClientFactory.start();
-                }
-
-                log.info("the producer [{}] start OK. sendMessageWithVIPChannel={}", this.defaultMQProducer.getProducerGroup(),
-                        this.defaultMQProducer.isSendMessageWithVIPChannel());
-                this.serviceState = ServiceState.RUNNING;
-                break;
-            case RUNNING:
-            case START_FAILED:
-            case SHUTDOWN_ALREADY:
-                throw new MQClientException("The producer service state not OK, maybe started once, "
-                        + this.serviceState
-                        + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
-                        null);
-            default:
-                break;
+        //region 启动状态检查
+        if (this.serviceState != ServiceState.CREATE_JUST) {
+            throw new MQClientException("The producer service state not OK, maybe started once, "
+                    + this.serviceState
+                    + FAQUrl.suggestTodo(FAQUrl.CLIENT_SERVICE_NOT_OK),
+                    null);
         }
+        //endregion
+        else {
+            this.serviceState = ServiceState.START_FAILED;
+            this.checkConfig();
 
-        this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
-
-        //
-        this.timer.scheduleAtFixedRate(new TimerTask() {
-            @Override
-            public void run() {
-                try {
-                    RequestFutureTable.scanExpiredRequest();
-                } catch (Throwable e) {
-                    log.error("scan RequestFutureTable exception", e);
-                }
+            //同一主机下producer的instancename因相同 设置为pid
+            if (!this.defaultMQProducer.getProducerGroup().equals(MixAll.CLIENT_INNER_PRODUCER_GROUP)) {
+                this.defaultMQProducer.changeInstanceNameToPID();
             }
-        }, 1000 * 3, 1000);
+
+            //region 获取 MQClientInstance 并注册 producer
+            // 同主机下各个producer&consumer公用一个连接实例
+            this.mQClientFactory = MQClientManager.getInstance().getOrCreateMQClientInstance(this.defaultMQProducer, rpcHook);
+            boolean registerOK = mQClientFactory.registerProducer(this.defaultMQProducer.getProducerGroup(), this);
+            if (!registerOK) {
+                this.serviceState = ServiceState.CREATE_JUST;
+                throw new MQClientException("The producer group[" + this.defaultMQProducer.getProducerGroup()
+                        + "] has been created before, specify another name please." + FAQUrl.suggestTodo(FAQUrl.GROUP_NAME_DUPLICATE_URL),
+                        null);
+            }
+            //endregion
+
+            //BTW102 ???
+            this.topicPublishInfoTable.put(this.defaultMQProducer.getCreateTopicKey(), new TopicPublishInfo());
+
+            //region 启动 MQClientInstance
+            if (startFactory) {
+                mQClientFactory.start();
+            }
+            //endregion
+
+            log.info("the producer [{}] start OK. sendMessageWithVIPChannel={}", this.defaultMQProducer.getProducerGroup(), this.defaultMQProducer.isSendMessageWithVIPChannel());
+            this.serviceState = ServiceState.RUNNING;
+
+            //region MQClientInstance注册了新的producer 需发送心跳告知broker
+            this.mQClientFactory.sendHeartbeatToAllBrokerWithLock();
+            //endregion
+
+            //region 每秒扫描发送的RPC请求 检查是否超时 是则设置超时异常
+            this.timer.scheduleAtFixedRate(new TimerTask() {
+                @Override
+                public void run() {
+                    try {
+                        RequestFutureTable.scanExpiredRequest();
+                    } catch (Throwable e) {
+                        log.error("scan RequestFutureTable exception", e);
+                    }
+                }
+            }, 1000 * 3, 1000);
+            //endregion
+        }
     }
 
     private void checkConfig() throws MQClientException {
