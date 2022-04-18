@@ -271,17 +271,13 @@ public class MQAdminImpl {
                 messageId.getOffset(), timeoutMillis);
     }
 
-    public QueryResult queryMessage(String topic, String key, int maxNum, long begin,
-                                    long end) throws MQClientException,
-            InterruptedException {
+    public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end) throws MQClientException, InterruptedException {
         return queryMessage(topic, key, maxNum, begin, end, false);
     }
 
-    public MessageExt queryMessageByUniqKey(String topic,
-                                            String uniqKey) throws InterruptedException, MQClientException {
+    public MessageExt queryMessageByUniqKey(String topic, String uniqKey) throws InterruptedException, MQClientException {
 
-        QueryResult qr = this.queryMessage(topic, uniqKey, 32,
-                MessageClientIDSetter.getNearlyTimeFromID(uniqKey).getTime() - 1000, Long.MAX_VALUE, true);
+        QueryResult qr = this.queryMessage(topic, uniqKey, 32, MessageClientIDSetter.getNearlyTimeFromID(uniqKey).getTime() - 1000, Long.MAX_VALUE, true);
         if (qr != null && qr.getMessageList() != null && qr.getMessageList().size() > 0) {
             return qr.getMessageList().get(0);
         } else {
@@ -289,9 +285,7 @@ public class MQAdminImpl {
         }
     }
 
-    protected QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end,
-                                       boolean isUniqKey) throws MQClientException,
-            InterruptedException {
+    protected QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end, boolean isUniqKey) throws MQClientException, InterruptedException {
         TopicRouteData topicRouteData = this.mQClientFactory.getAnExistTopicRouteData(topic);
         if (null == topicRouteData) {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);

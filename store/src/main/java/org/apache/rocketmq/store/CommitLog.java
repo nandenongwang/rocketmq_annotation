@@ -131,12 +131,7 @@ public class CommitLog {
         return this.mappedFileQueue.remainHowManyDataToFlush();
     }
 
-    public int deleteExpiredFile(
-            final long expiredTime,
-            final int deleteFilesInterval,
-            final long intervalForcibly,
-            final boolean cleanImmediately
-    ) {
+    public int deleteExpiredFile(long expiredTime, int deleteFilesInterval, long intervalForcibly, boolean cleanImmediately) {
         return this.mappedFileQueue.deleteExpiredFileByTime(expiredTime, deleteFilesInterval, intervalForcibly, cleanImmediately);
     }
 

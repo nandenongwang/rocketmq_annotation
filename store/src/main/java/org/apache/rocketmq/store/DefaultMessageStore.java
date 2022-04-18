@@ -1,19 +1,3 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.store;
 
 import java.io.File;
@@ -39,6 +23,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.common.BrokerConfig;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.ServiceThread;
@@ -179,6 +165,7 @@ public class DefaultMessageStore implements MessageStore {
     /**
      * @throws IOException
      */
+    @Override
     public boolean load() {
         boolean result = true;
 
@@ -223,6 +210,7 @@ public class DefaultMessageStore implements MessageStore {
     /**
      * @throws Exception
      */
+    @Override
     public void start() throws Exception {
 
         lock = lockFile.getChannel().tryLock(0, 1, false);
@@ -295,6 +283,7 @@ public class DefaultMessageStore implements MessageStore {
         this.shutdown = false;
     }
 
+    @Override
     public void shutdown() {
         if (!this.shutdown) {
             this.shutdown = true;
@@ -338,11 +327,12 @@ public class DefaultMessageStore implements MessageStore {
             try {
                 lock.release();
                 lockFile.close();
-            } catch (IOException e) {
+            } catch (IOException ignored) {
             }
         }
     }
 
+    @Override
     public void destroy() {
         this.destroyLogics();
         this.commitLog.destroy();
@@ -460,6 +450,7 @@ public class DefaultMessageStore implements MessageStore {
         return putResultFuture;
     }
 
+    @Override
     public CompletableFuture<PutMessageResult> asyncPutMessages(MessageExtBatch messageExtBatch) {
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
@@ -568,6 +559,7 @@ public class DefaultMessageStore implements MessageStore {
         return commitLog;
     }
 
+    @Override
     public GetMessageResult getMessage(String group, String topic, int queueId, long offset, int maxMsgNums, MessageFilter messageFilter) {
         if (this.shutdown) {
             log.warn("message store has shutdown, so getMessage is forbidden");
@@ -632,8 +624,9 @@ public class DefaultMessageStore implements MessageStore {
                             maxPhyOffsetPulling = offsetPy;
 
                             if (nextPhyFileStartOffset != Long.MIN_VALUE) {
-                                if (offsetPy < nextPhyFileStartOffset)
+                                if (offsetPy < nextPhyFileStartOffset) {
                                     continue;
+                                }
                             }
 
                             boolean isInDisk = checkInDiskByCommitOffset(offsetPy, maxOffsetPy);
@@ -733,6 +726,7 @@ public class DefaultMessageStore implements MessageStore {
         return getResult;
     }
 
+    @Override
     public long getMaxOffsetInQueue(String topic, int queueId) {
         ConsumeQueue logic = this.findConsumeQueue(topic, queueId);
         if (logic != null) {
@@ -743,6 +737,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public long getMinOffsetInQueue(String topic, int queueId) {
         ConsumeQueue logic = this.findConsumeQueue(topic, queueId);
         if (logic != null) {
@@ -770,6 +765,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public long getOffsetInQueueByTime(String topic, int queueId, long timestamp) {
         ConsumeQueue logic = this.findConsumeQueue(topic, queueId);
         if (logic != null) {
@@ -779,6 +775,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public MessageExt lookMessageByOffset(long commitLogOffset) {
         SelectMappedBufferResult sbr = this.commitLog.getMessage(commitLogOffset, 4);
         if (null != sbr) {
@@ -815,10 +812,14 @@ public class DefaultMessageStore implements MessageStore {
         return this.commitLog.getMessage(commitLogOffset, msgSize);
     }
 
+    @Override
     public String getRunningDataInfo() {
         return this.storeStatsService.toString();
     }
 
+    /**
+     * 获取commitlog存储路径 【如C:\Users\Administrator\store\commitlog】
+     */
     private String getStorePathPhysic() {
         String storePathPhysic = "";
         if (DefaultMessageStore.this.getMessageStoreConfig().isEnableDLegerCommitLog()) {
@@ -1068,6 +1069,7 @@ public class DefaultMessageStore implements MessageStore {
         return 0;
     }
 
+    @Override
     public void cleanExpiredConsumerQueue() {
         long minCommitLogOffset = this.commitLog.getMinOffset();
 
@@ -1358,6 +1360,7 @@ public class DefaultMessageStore implements MessageStore {
         // }
         // }, 1, 1, TimeUnit.HOURS);
         this.diskCheckScheduledExecutorService.scheduleAtFixedRate(new Runnable() {
+            @Override
             public void run() {
                 DefaultMessageStore.this.cleanCommitLogService.isSpaceFull();
             }
@@ -1607,15 +1610,22 @@ public class DefaultMessageStore implements MessageStore {
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
-        private final double diskSpaceWarningLevelRatio =
-                Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "0.90"));
-
-        private final double diskSpaceCleanForciblyRatio =
-                Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "0.85"));
+        /**
+         * 磁盘空间使用率报警阈值
+         */
+        private final double diskSpaceWarningLevelRatio = Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceWarningLevelRatio", "0.90"));
+        /**
+         * 磁盘空间强制清理阈值
+         */
+        private final double diskSpaceCleanForciblyRatio = Double.parseDouble(System.getProperty("rocketmq.broker.diskSpaceCleanForciblyRatio", "0.85"));
         private long lastRedeleteTimestamp = 0;
-
+        @Getter
+        @Setter
         private volatile int manualDeleteFileSeveralTimes = 0;
 
+        /**
+         * commitlog或consumequeue磁盘使用率超过报警或清理阈值时需要立即清理
+         */
         private volatile boolean cleanImmediately = false;
 
         public void excuteDeleteFilesManualy() {
@@ -1633,21 +1643,30 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         * 删除过期commitlog
+         */
         private void deleteExpiredFiles() {
             int deleteCount = 0;
+            //日志保留时间 默认72小时
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
+            //默认100
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
+            //默认1000 * 120
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
+            //是否到了删除时间 磁盘使用率是否满足删除条件
             boolean timeup = this.isTimeToDelete();
             boolean spacefull = this.isSpaceToDelete();
             boolean manualDelete = this.manualDeleteFileSeveralTimes > 0;
 
             if (timeup || spacefull || manualDelete) {
 
-                if (manualDelete)
+                if (manualDelete) {
                     this.manualDeleteFileSeveralTimes--;
+                }
 
+                //立即清理
                 boolean cleanAtOnce = DefaultMessageStore.this.getMessageStoreConfig().isCleanFileForciblyEnable() && this.cleanImmediately;
 
                 log.info("begin to delete before {} hours file. timeup: {} spacefull: {} manualDeleteFileSeveralTimes: {} cleanAtOnce: {}",
@@ -1657,10 +1676,9 @@ public class DefaultMessageStore implements MessageStore {
                         manualDeleteFileSeveralTimes,
                         cleanAtOnce);
 
-                fileReservedTime *= 60 * 60 * 1000;
+                fileReservedTime *= 60 * 60 * 1000;//72
 
-                deleteCount = DefaultMessageStore.this.commitLog.deleteExpiredFile(fileReservedTime, deletePhysicFilesInterval,
-                        destroyMapedFileIntervalForcibly, cleanAtOnce);
+                deleteCount = DefaultMessageStore.this.commitLog.deleteExpiredFile(fileReservedTime, deletePhysicFilesInterval, destroyMapedFileIntervalForcibly, cleanAtOnce);
                 if (deleteCount > 0) {
                 } else if (spacefull) {
                     log.warn("disk space will be full soon, but delete file failed.");
@@ -1668,6 +1686,9 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        /**
+         *
+         */
         private void redeleteHangedFile() {
             int interval = DefaultMessageStore.this.getMessageStoreConfig().getRedeleteHangedFileInterval();
             long currentTimestamp = System.currentTimeMillis();
@@ -1676,6 +1697,7 @@ public class DefaultMessageStore implements MessageStore {
                 int destroyMapedFileIntervalForcibly =
                         DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
                 if (DefaultMessageStore.this.commitLog.retryDeleteFirstFile(destroyMapedFileIntervalForcibly)) {
+
                 }
             }
         }
@@ -1684,6 +1706,9 @@ public class DefaultMessageStore implements MessageStore {
             return CleanCommitLogService.class.getSimpleName();
         }
 
+        /**
+         * 是否到了清理文件时间 【默认4点】
+         */
         private boolean isTimeToDelete() {
             String when = DefaultMessageStore.this.getMessageStoreConfig().getDeleteWhen();
             if (UtilAll.isItTimeToDo(when)) {
@@ -1694,12 +1719,16 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
+        /**
+         * 使用空间是否满足删除条件 【commitlog或consumequeue磁盘使用率大于磁盘最大使用率，默认75%】
+         */
         private boolean isSpaceToDelete() {
             double ratio = DefaultMessageStore.this.getMessageStoreConfig().getDiskMaxUsedSpaceRatio() / 100.0;
 
             cleanImmediately = false;
 
             {
+                //实际使用率
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(getStorePathPhysic());
                 if (physicRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
@@ -1724,8 +1753,8 @@ public class DefaultMessageStore implements MessageStore {
             }
 
             {
-                String storePathLogics = StorePathConfigHelper
-                        .getStorePathConsumeQueue(DefaultMessageStore.this.getMessageStoreConfig().getStorePathRootDir());
+                //consume queue 存储位置
+                String storePathLogics = StorePathConfigHelper.getStorePathConsumeQueue(DefaultMessageStore.this.getMessageStoreConfig().getStorePathRootDir());
                 double logicsRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogics);
                 if (logicsRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
@@ -1752,14 +1781,9 @@ public class DefaultMessageStore implements MessageStore {
             return false;
         }
 
-        public int getManualDeleteFileSeveralTimes() {
-            return manualDeleteFileSeveralTimes;
-        }
-
-        public void setManualDeleteFileSeveralTimes(int manualDeleteFileSeveralTimes) {
-            this.manualDeleteFileSeveralTimes = manualDeleteFileSeveralTimes;
-        }
-
+        /**
+         * 检查磁盘空间使用率 【大于使用阈值打印警告信息 小于更新Store状态DISK_FULL_BIT位为0】
+         */
         public boolean isSpaceFull() {
             String storePathPhysic = DefaultMessageStore.this.getMessageStoreConfig().getStorePathCommitLog();
             double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathPhysic);
@@ -1868,6 +1892,7 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
+        @Override
         public void run() {
             DefaultMessageStore.log.info(this.getServiceName() + " service started");
 

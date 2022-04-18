@@ -31,7 +31,8 @@ import java.util.Collection;
 import java.util.Iterator;
 
 /**
- * Calculate bit map of filter.
+ * 用于表达式过滤
+ * 消息dispatch时预先计算所有满足条件的消费组位图存储到消息中
  */
 @AllArgsConstructor
 public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
@@ -86,9 +87,7 @@ public class CommitLogDispatcherCalcBitMap implements CommitLogDispatcher {
 
                 // eval true
                 if (ret != null && ret instanceof Boolean && (Boolean) ret) {
-                    consumerFilterManager.getBloomFilter().hashTo(
-                            filterData.getBloomFilterData(),
-                            filterBitMap
+                    consumerFilterManager.getBloomFilter().hashTo(filterData.getBloomFilterData(), filterBitMap
                     );
                 }
             }

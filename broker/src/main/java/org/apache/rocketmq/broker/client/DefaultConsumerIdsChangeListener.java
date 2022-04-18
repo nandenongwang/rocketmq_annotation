@@ -48,11 +48,11 @@ public class DefaultConsumerIdsChangeListener implements ConsumerIdsChangeListen
                 }
                 break;
             case UNREGISTER:
-                //消费组内没有消费者后、
+                //消费组内没有消费者
                 this.brokerController.getConsumerFilterManager().unRegister(group);
                 break;
             case REGISTER:
-                //新的消费组、
+                //新的消费组
                 if (args == null || args.length < 1) {
                     return;
                 }

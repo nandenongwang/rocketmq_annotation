@@ -117,9 +117,13 @@ public class ConsumerManager {
     /**
      * 注册消费者
      */
-    public boolean registerConsumer(String group, ClientChannelInfo clientChannelInfo, ConsumeType consumeType, MessageModel messageModel,
+    public boolean registerConsumer(String group,
+                                    ClientChannelInfo clientChannelInfo,
+                                    ConsumeType consumeType,
+                                    MessageModel messageModel,
                                     ConsumeFromWhere consumeFromWhere,
-                                    Set<SubscriptionData> subList, boolean isNotifyConsumerIdsChangedEnable) {
+                                    Set<SubscriptionData> subList,
+                                    boolean isNotifyConsumerIdsChangedEnable) {
 
         ConsumerGroupInfo consumerGroupInfo = this.consumerTable.get(group);
         if (null == consumerGroupInfo) {
