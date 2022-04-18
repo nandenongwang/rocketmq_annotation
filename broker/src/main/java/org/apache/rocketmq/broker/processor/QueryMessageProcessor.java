@@ -16,7 +16,6 @@
  */
 package org.apache.rocketmq.broker.processor;
 
-import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.FileRegion;
@@ -39,6 +38,9 @@ import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.QueryMessageResult;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
+/**
+ * 消息查询命令处理器
+ */
 public class QueryMessageProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
 
@@ -49,15 +51,18 @@ public class QueryMessageProcessor extends AsyncNettyRequestProcessor implements
     }
 
     @Override
-    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request)
-            throws RemotingCommandException {
+    public RemotingCommand processRequest(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         switch (request.getCode()) {
+
+            //region key & 存储时间查询 【查询索引 topic#key & store时间范围 获取offsets 然后从commitlog中读取消息】
             case RequestCode.QUERY_MESSAGE:
-                //查询索引 topic+#+key & store时间范围 获取offsets 后从commitlog中读取消息
                 return this.queryMessage(ctx, request);
+            //endregion
+
+            //region commitlogOffset查询
             case RequestCode.VIEW_MESSAGE_BY_ID:
-                //按commitlog offset读取一条消息
                 return this.viewMessageById(ctx, request);
+            //endregion
             default:
                 break;
         }
@@ -71,40 +76,40 @@ public class QueryMessageProcessor extends AsyncNettyRequestProcessor implements
     }
 
     public RemotingCommand queryMessage(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+        //解析命令头 设置响应请求ID
         RemotingCommand response = RemotingCommand.createResponseCommand(QueryMessageResponseHeader.class);
         QueryMessageResponseHeader responseHeader = (QueryMessageResponseHeader) response.readCustomHeader();
-
         QueryMessageRequestHeader requestHeader = (QueryMessageRequestHeader) request.decodeCommandCustomHeader(QueryMessageRequestHeader.class);
-
         response.setOpaque(request.getOpaque());
 
+        //设置查询数量
         String isUniqueKey = request.getExtFields().get(MixAll.UNIQUE_MSG_QUERY_FLAG);
-        if (isUniqueKey != null && isUniqueKey.equals("true")) {
+        if (isUniqueKey != null && "true".equals(isUniqueKey)) {
             requestHeader.setMaxNum(this.brokerController.getMessageStoreConfig().getDefaultQueryMaxNum());
         }
 
+        //通过messagesotre查询消息
         QueryMessageResult queryMessageResult =
                 this.brokerController.getMessageStore().queryMessage(requestHeader.getTopic(),
                         requestHeader.getKey(), requestHeader.getMaxNum(), requestHeader.getBeginTimestamp(),
                         requestHeader.getEndTimestamp());
         assert queryMessageResult != null;
 
+        //设置索引最大offset、最近更新时间
         responseHeader.setIndexLastUpdatePhyoffset(queryMessageResult.getIndexLastUpdatePhyoffset());
         responseHeader.setIndexLastUpdateTimestamp(queryMessageResult.getIndexLastUpdateTimestamp());
 
+        //写回查询结果
         if (queryMessageResult.getBufferTotalSize() > 0) {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
 
             try {
                 FileRegion fileRegion = new QueryMessageTransfer(response.encodeHeader(queryMessageResult.getBufferTotalSize()), queryMessageResult);
-                ctx.channel().writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        queryMessageResult.release();
-                        if (!future.isSuccess()) {
-                            log.error("transfer query message by page cache failed, ", future.cause());
-                        }
+                ctx.channel().writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
+                    queryMessageResult.release();
+                    if (!future.isSuccess()) {
+                        log.error("transfer query message by page cache failed, ", future.cause());
                     }
                 });
             } catch (Throwable e) {
@@ -120,28 +125,26 @@ public class QueryMessageProcessor extends AsyncNettyRequestProcessor implements
         return response;
     }
 
-    public RemotingCommand viewMessageById(ChannelHandlerContext ctx, RemotingCommand request)
-            throws RemotingCommandException {
-        final RemotingCommand response = RemotingCommand.createResponseCommand(null);
-        final ViewMessageRequestHeader requestHeader =
-                (ViewMessageRequestHeader) request.decodeCommandCustomHeader(ViewMessageRequestHeader.class);
+    public RemotingCommand viewMessageById(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
 
+        //解析命令头 设置响应请求ID
+        RemotingCommand response = RemotingCommand.createResponseCommand(null);
+        ViewMessageRequestHeader requestHeader = (ViewMessageRequestHeader) request.decodeCommandCustomHeader(ViewMessageRequestHeader.class);
         response.setOpaque(request.getOpaque());
 
-        final SelectMappedBufferResult selectMappedBufferResult =
-                this.brokerController.getMessageStore().selectOneMessageByOffset(requestHeader.getOffset());
+        //通过messagesotre查询offset消息
+        SelectMappedBufferResult selectMappedBufferResult = this.brokerController.getMessageStore().selectOneMessageByOffset(requestHeader.getOffset());
+
+        //写回查询结果
         if (selectMappedBufferResult != null) {
             response.setCode(ResponseCode.SUCCESS);
             response.setRemark(null);
             try {
                 FileRegion fileRegion = new OneMessageTransfer(response.encodeHeader(selectMappedBufferResult.getSize()), selectMappedBufferResult);
-                ctx.channel().writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
-                    @Override
-                    public void operationComplete(ChannelFuture future) throws Exception {
-                        selectMappedBufferResult.release();
-                        if (!future.isSuccess()) {
-                            log.error("Transfer one message from page cache failed, ", future.cause());
-                        }
+                ctx.channel().writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
+                    selectMappedBufferResult.release();
+                    if (!future.isSuccess()) {
+                        log.error("Transfer one message from page cache failed, ", future.cause());
                     }
                 });
             } catch (Throwable e) {
