@@ -16,12 +16,20 @@
  */
 package org.apache.rocketmq.common.message;
 
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
 import java.io.Serializable;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * 用户侧消息
+ */
+@Data
+@NoArgsConstructor
 public class Message implements Serializable {
     private static final long serialVersionUID = 8445773977080406428L;
     /**
@@ -29,7 +37,7 @@ public class Message implements Serializable {
      */
     private String topic;
     /**
-     * 默认0 无
+     * 消息flag 默认0 无
      */
     private int flag;
     /**
@@ -42,12 +50,9 @@ public class Message implements Serializable {
      */
     private byte[] body;
     /**
-     * 事务ID？？？
+     * 用户侧事务ID 事务消息发送返回时设置
      */
     private String transactionId;
-
-    public Message() {
-    }
 
     public Message(String topic, byte[] body) {
         this(topic, "", "", 0, body, true);
@@ -58,11 +63,13 @@ public class Message implements Serializable {
         this.flag = flag;
         this.body = body;
 
-        if (tags != null && tags.length() > 0)
+        if (tags != null && tags.length() > 0) {
             this.setTags(tags);
+        }
 
-        if (keys != null && keys.length() > 0)
+        if (keys != null && keys.length() > 0) {
             this.setKeys(keys);
+        }
 
         this.setWaitStoreMsgOK(waitStoreMsgOK);
     }
@@ -79,7 +86,7 @@ public class Message implements Serializable {
         this.putProperty(MessageConst.PROPERTY_KEYS, keys);
     }
 
-    void putProperty(final String name, final String value) {
+    void putProperty(String name, String value) {
         if (null == this.properties) {
             this.properties = new HashMap<String, String>();
         }
@@ -93,40 +100,29 @@ public class Message implements Serializable {
         }
     }
 
-    public void putUserProperty(final String name, final String value) {
+    public void putUserProperty(String name, String value) {
         if (MessageConst.STRING_HASH_SET.contains(name)) {
             throw new RuntimeException(String.format(
-                "The Property<%s> is used by system, input another please", name));
+                    "The Property<%s> is used by system, input another please", name));
         }
 
-        if (value == null || value.trim().isEmpty()
-            || name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                "The name or value of property can not be null or blank string!"
-            );
+        if (value == null || value.trim().isEmpty() || name == null || name.trim().isEmpty()) {
+            throw new IllegalArgumentException("The name or value of property can not be null or blank string!");
         }
 
         this.putProperty(name, value);
     }
 
-    public String getUserProperty(final String name) {
+    public String getUserProperty(String name) {
         return this.getProperty(name);
     }
 
-    public String getProperty(final String name) {
+    public String getProperty(String name) {
         if (null == this.properties) {
-            this.properties = new HashMap<String, String>();
+            this.properties = new HashMap<>();
         }
 
         return this.properties.get(name);
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public void setTopic(String topic) {
-        this.topic = topic;
     }
 
     public String getTags() {
@@ -142,7 +138,7 @@ public class Message implements Serializable {
     }
 
     public void setKeys(Collection<String> keys) {
-        StringBuffer sb = new StringBuffer();
+        StringBuilder sb = new StringBuilder();
         for (String k : keys) {
             sb.append(k);
             sb.append(MessageConst.KEY_SEPARATOR);
@@ -166,9 +162,9 @@ public class Message implements Serializable {
 
     public boolean isWaitStoreMsgOK() {
         String result = this.getProperty(MessageConst.PROPERTY_WAIT_STORE_MSG_OK);
-        if (null == result)
+        if (null == result) {
             return true;
-
+        }
         return Boolean.parseBoolean(result);
     }
 
@@ -180,30 +176,6 @@ public class Message implements Serializable {
         this.putProperty(MessageConst.PROPERTY_INSTANCE_ID, instanceId);
     }
 
-    public int getFlag() {
-        return flag;
-    }
-
-    public void setFlag(int flag) {
-        this.flag = flag;
-    }
-
-    public byte[] getBody() {
-        return body;
-    }
-
-    public void setBody(byte[] body) {
-        this.body = body;
-    }
-
-    public Map<String, String> getProperties() {
-        return properties;
-    }
-
-    void setProperties(Map<String, String> properties) {
-        this.properties = properties;
-    }
-
     public String getBuyerId() {
         return getProperty(MessageConst.PROPERTY_BUYER_ID);
     }
@@ -212,22 +184,4 @@ public class Message implements Serializable {
         putProperty(MessageConst.PROPERTY_BUYER_ID, buyerId);
     }
 
-    public String getTransactionId() {
-        return transactionId;
-    }
-
-    public void setTransactionId(String transactionId) {
-        this.transactionId = transactionId;
-    }
-
-    @Override
-    public String toString() {
-        return "Message{" +
-            "topic='" + topic + '\'' +
-            ", flag=" + flag +
-            ", properties=" + properties +
-            ", body=" + Arrays.toString(body) +
-            ", transactionId='" + transactionId + '\'' +
-            '}';
-    }
 }
