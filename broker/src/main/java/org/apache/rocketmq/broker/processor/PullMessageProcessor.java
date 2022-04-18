@@ -71,6 +71,9 @@ import org.apache.rocketmq.store.PutMessageResult;
 import org.apache.rocketmq.store.config.BrokerRole;
 import org.apache.rocketmq.store.stats.BrokerStatsManager;
 
+/**
+ * 拉取消息处理器
+ */
 public class PullMessageProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private final BrokerController brokerController;
@@ -90,6 +93,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         return false;
     }
 
+    /**
+     * brokerAllowSuspend 【首次拉取允许挂起|唤醒后重新拉起不允许挂起】
+     */
     private RemotingCommand processRequest(Channel channel, RemotingCommand request, boolean brokerAllowSuspend) throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(PullMessageResponseHeader.class);
         PullMessageResponseHeader responseHeader = (PullMessageResponseHeader) response.readCustomHeader();
@@ -196,6 +202,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             }
             //endregion
 
+            //region 检测订阅组配置 【订阅组是否存在 & 广播模式下broker是否启用广播消费 & 版本请求在订阅版本后】
             if (!subscriptionGroupConfig.isConsumeBroadcastEnable() && consumerGroupInfo.getMessageModel() == MessageModel.BROADCASTING) {
                 response.setCode(ResponseCode.NO_PERMISSION);
                 response.setRemark("the consumer group[" + requestHeader.getConsumerGroup() + "] can not consume by broadcast way");
@@ -217,8 +224,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                 response.setRemark("the consumer's subscription not latest");
                 return response;
             }
+            //endregion
 
-            //region 检测sql表达式过滤配置&&broekr版本
+            //region 【检测sql表达式过滤配置 & broekr版本】
             if (!ExpressionType.isTagType(subscriptionData.getExpressionType())) {
                 consumerFilterData = this.brokerController.getConsumerFilterManager().get(requestHeader.getTopic(),
                         requestHeader.getConsumerGroup());
@@ -249,6 +257,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         //endregion
 
         MessageFilter messageFilter;
+        //region 根据是否支持重试消息过滤选择消息过滤器
         if (this.brokerController.getBrokerConfig().isFilterSupportRetry()) {
             messageFilter = new ExpressionForRetryMessageFilter(subscriptionData, consumerFilterData,
                     this.brokerController.getConsumerFilterManager());
@@ -256,30 +265,36 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             messageFilter = new ExpressionMessageFilter(subscriptionData, consumerFilterData,
                     this.brokerController.getConsumerFilterManager());
         }
+        //endregion
 
+        //region 从messagestore中拉取消息
         GetMessageResult getMessageResult = this.brokerController.getMessageStore().getMessage(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
                 requestHeader.getQueueId(), requestHeader.getQueueOffset(), requestHeader.getMaxMsgNums(), messageFilter);
+        //endregion
+
         if (getMessageResult != null) {
             response.setRemark(getMessageResult.getStatus().name());
             responseHeader.setNextBeginOffset(getMessageResult.getNextBeginOffset());
             responseHeader.setMinOffset(getMessageResult.getMinOffset());
             responseHeader.setMaxOffset(getMessageResult.getMaxOffset());
 
+            //region 设置下次建议从哪个broker拉取消息 默认master 【根据是否开启slaveread和消费者进度判断】
             if (getMessageResult.isSuggestPullingFromSlave()) {
                 responseHeader.setSuggestWhichBrokerId(subscriptionGroupConfig.getWhichBrokerWhenConsumeSlowly());
             } else {
                 responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
             }
-
             switch (this.brokerController.getMessageStoreConfig().getBrokerRole()) {
                 case ASYNC_MASTER:
                 case SYNC_MASTER:
                     break;
                 case SLAVE:
+                    //region 默认不可从slave读取 重新建议到master消费 并且由于此次slave拉取失败 客户端需要立即重拉
                     if (!this.brokerController.getBrokerConfig().isSlaveReadEnable()) {
                         response.setCode(ResponseCode.PULL_RETRY_IMMEDIATELY);
                         responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
                     }
+                    //endregion
                     break;
             }
 
@@ -295,7 +310,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
             } else {
                 responseHeader.setSuggestWhichBrokerId(MixAll.MASTER_ID);
             }
+            //endregion
 
+            //region 根据拉取结果设置响应状态
             switch (getMessageResult.getStatus()) {
                 case FOUND:
                     response.setCode(ResponseCode.SUCCESS);
@@ -345,7 +362,9 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                     assert false;
                     break;
             }
+            //endregion
 
+            //region 调用消费消息hook 前置钩子 【主要用于更新统计数据】
             if (this.hasConsumeMessageHook()) {
                 ConsumeMessageContext context = new ConsumeMessageContext();
                 context.setConsumerGroup(requestHeader.getConsumerGroup());
@@ -387,35 +406,33 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
 
                 this.executeConsumeMessageHookBefore(context);
             }
+            //endregion
 
             switch (response.getCode()) {
                 case ResponseCode.SUCCESS:
+                    //region 更新broker统计数据
+                    this.brokerController.getBrokerStatsManager().incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(), getMessageResult.getMessageCount());
 
-                    this.brokerController.getBrokerStatsManager().incGroupGetNums(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
-                            getMessageResult.getMessageCount());
-
-                    this.brokerController.getBrokerStatsManager().incGroupGetSize(requestHeader.getConsumerGroup(), requestHeader.getTopic(),
-                            getMessageResult.getBufferTotalSize());
+                    this.brokerController.getBrokerStatsManager().incGroupGetSize(requestHeader.getConsumerGroup(), requestHeader.getTopic(), getMessageResult.getBufferTotalSize());
 
                     this.brokerController.getBrokerStatsManager().incBrokerGetNums(getMessageResult.getMessageCount());
+                    //endregion
+
+                    //region 发送响应 【堆|零拷贝】
                     if (this.brokerController.getBrokerConfig().isTransferMsgByHeap()) {
-                        final long beginTimeMills = this.brokerController.getMessageStore().now();
-                        final byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId());
+                        long beginTimeMills = this.brokerController.getMessageStore().now();
+                        byte[] r = this.readGetMessageResult(getMessageResult, requestHeader.getConsumerGroup(), requestHeader.getTopic(), requestHeader.getQueueId());
                         this.brokerController.getBrokerStatsManager().incGroupGetLatency(requestHeader.getConsumerGroup(),
                                 requestHeader.getTopic(), requestHeader.getQueueId(),
                                 (int) (this.brokerController.getMessageStore().now() - beginTimeMills));
                         response.setBody(r);
                     } else {
                         try {
-                            FileRegion fileRegion =
-                                    new ManyMessageTransfer(response.encodeHeader(getMessageResult.getBufferTotalSize()), getMessageResult);
-                            channel.writeAndFlush(fileRegion).addListener(new ChannelFutureListener() {
-                                @Override
-                                public void operationComplete(ChannelFuture future) throws Exception {
-                                    getMessageResult.release();
-                                    if (!future.isSuccess()) {
-                                        log.error("transfer many message by pagecache failed, {}", channel.remoteAddress(), future.cause());
-                                    }
+                            FileRegion fileRegion = new ManyMessageTransfer(response.encodeHeader(getMessageResult.getBufferTotalSize()), getMessageResult);
+                            channel.writeAndFlush(fileRegion).addListener((ChannelFutureListener) future -> {
+                                getMessageResult.release();
+                                if (!future.isSuccess()) {
+                                    log.error("transfer many message by pagecache failed, {}", channel.remoteAddress(), future.cause());
                                 }
                             });
                         } catch (Throwable e) {
@@ -425,15 +442,17 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
 
                         response = null;
                     }
+                    //endregion
+
                     break;
                 case ResponseCode.PULL_NOT_FOUND:
 
+                    //region 没有新消息 挂起请求长轮训等待
                     if (brokerAllowSuspend && hasSuspendFlag) {
                         long pollingTimeMills = suspendTimeoutMillisLong;
                         if (!this.brokerController.getBrokerConfig().isLongPollingEnable()) {
                             pollingTimeMills = this.brokerController.getBrokerConfig().getShortPollingTimeMills();
                         }
-
                         String topic = requestHeader.getTopic();
                         long offset = requestHeader.getQueueOffset();
                         int queueId = requestHeader.getQueueId();
@@ -442,8 +461,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         response = null;
                         break;
                     }
+                    //endregion
 
                 case ResponseCode.PULL_RETRY_IMMEDIATELY:
+                    //立即重试 该节点是slave节点 但未开启readslave配置
                     break;
                 case ResponseCode.PULL_OFFSET_MOVED:
                     if (this.brokerController.getMessageStoreConfig().getBrokerRole() != BrokerRole.SLAVE
@@ -458,6 +479,7 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
                         event.setMessageQueue(mq);
                         event.setOffsetRequest(requestHeader.getQueueOffset());
                         event.setOffsetNew(getMessageResult.getNextBeginOffset());
+
                         this.generateOffsetMovedEvent(event);
                         log.warn(
                                 "PULL_OFFSET_MOVED:correction offset. topic={}, groupId={}, requestOffset={}, newOffset={}, suggestBrokerId={}",
@@ -496,10 +518,18 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         return response;
     }
 
+    //region 消息消费hook
+
+    /**
+     * 是否有消息消费hook
+     */
     public boolean hasConsumeMessageHook() {
         return consumeMessageHookList != null && !this.consumeMessageHookList.isEmpty();
     }
 
+    /**
+     * 执行消息消费hook前置钩子
+     */
     public void executeConsumeMessageHookBefore(final ConsumeMessageContext context) {
         if (hasConsumeMessageHook()) {
             for (ConsumeMessageHook hook : this.consumeMessageHookList) {
@@ -511,9 +541,20 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         }
     }
 
+    /**
+     * 注册消息消费hook
+     */
+    public void registerConsumeMessageHook(List<ConsumeMessageHook> sendMessageHookList) {
+        this.consumeMessageHookList = sendMessageHookList;
+    }
+    //endregion
+
+    /**
+     * 将拉取到的消息读到堆 byte[]中
+     */
     private byte[] readGetMessageResult(GetMessageResult getMessageResult, String group, String topic, int queueId) {
         ByteBuffer byteBuffer = ByteBuffer.allocate(getMessageResult.getBufferTotalSize());
-
+        //最后一条消息的存储时间
         long storeTimestamp = 0;
         try {
             List<ByteBuffer> messageBufferList = getMessageResult.getMessageBufferList();
@@ -544,7 +585,10 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         return byteBuffer.array();
     }
 
-    private void generateOffsetMovedEvent(final OffsetMovedEvent event) {
+    /**
+     * 将OffsetMovedEvent 转成消息写入内部topic【RMQ_SYS_OFFSET_MOVED_EVENT】
+     */
+    private void generateOffsetMovedEvent(OffsetMovedEvent event) {
         try {
             MessageExtBrokerInner msgInner = new MessageExtBrokerInner();
             msgInner.setTopic(TopicValidator.RMQ_SYS_OFFSET_MOVED_EVENT);
@@ -570,10 +614,13 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         }
     }
 
-    public void executeRequestWhenWakeup(Channel channel, RemotingCommand request) throws RemotingCommandException {
+    /**
+     * 将长轮训恢复的请求重新放到消息拉取线程池执行
+     */
+    public void executeRequestWhenWakeup(Channel channel, RemotingCommand request) {
         Runnable run = () -> {
             try {
-                final RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
+                RemotingCommand response = PullMessageProcessor.this.processRequest(channel, request, false);
 
                 if (response != null) {
                     response.setOpaque(request.getOpaque());
@@ -600,7 +647,5 @@ public class PullMessageProcessor extends AsyncNettyRequestProcessor implements 
         this.brokerController.getPullMessageExecutor().submit(new RequestTask(run, channel, request));
     }
 
-    public void registerConsumeMessageHook(List<ConsumeMessageHook> sendMessageHookList) {
-        this.consumeMessageHookList = sendMessageHookList;
-    }
+
 }
