@@ -49,8 +49,7 @@ public class MappedFileQueue {
 
     private volatile long storeTimestamp = 0;
 
-    public MappedFileQueue(final String storePath, int mappedFileSize,
-                           AllocateMappedFileService allocateMappedFileService) {
+    public MappedFileQueue(String storePath, int mappedFileSize, AllocateMappedFileService allocateMappedFileService) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
         this.allocateMappedFileService = allocateMappedFileService;
@@ -544,7 +543,7 @@ public class MappedFileQueue {
                 boolean result = mappedFile.destroy(intervalForcibly);
                 if (result) {
                     log.info("the mappedFile re delete OK, " + mappedFile.getFileName());
-                    List<MappedFile> tmpFiles = new ArrayList<MappedFile>();
+                    List<MappedFile> tmpFiles = new ArrayList<>();
                     tmpFiles.add(mappedFile);
                     this.deleteExpiredFile(tmpFiles);
                 } else {

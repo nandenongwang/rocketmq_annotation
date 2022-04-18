@@ -252,6 +252,7 @@ public class DefaultMessageStore implements MessageStore {
             }
             log.info("[SetReputOffset] maxPhysicalPosInLogicQueue={} clMinOffset={} clMaxOffset={} clConfirmedOffset={}",
                     maxPhysicalPosInLogicQueue, this.commitLog.getMinOffset(), this.commitLog.getMaxOffset(), this.commitLog.getConfirmOffset());
+            //设置消息dispatch起始位置
             this.reputMessageService.setReputFromOffset(maxPhysicalPosInLogicQueue);
             this.reputMessageService.start();
 
@@ -1318,40 +1319,33 @@ public class DefaultMessageStore implements MessageStore {
 
     private void addScheduleTask() {
 
-        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                DefaultMessageStore.this.cleanFilesPeriodically();
-            }
-        }, 1000 * 60, this.messageStoreConfig.getCleanResourceInterval(), TimeUnit.MILLISECONDS);
+        //region 每10s检查并清理过期文件 【commitlog & consumequeue】
+        this.scheduledExecutorService.scheduleAtFixedRate(DefaultMessageStore.this::cleanFilesPeriodically, 1000 * 60, this.messageStoreConfig.getCleanResourceInterval(), TimeUnit.MILLISECONDS);
+        //endregion
 
-        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                DefaultMessageStore.this.checkSelf();
-            }
-        }, 1, 10, TimeUnit.MINUTES);
+        //region 定时自我检查 【mappedfile大小是否与是否等于文件名offset跨度】
+        this.scheduledExecutorService.scheduleAtFixedRate(DefaultMessageStore.this::checkSelf, 1, 10, TimeUnit.MINUTES);
+        //endregion
 
-        this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                if (DefaultMessageStore.this.getMessageStoreConfig().isDebugLockEnable()) {
-                    try {
-                        if (DefaultMessageStore.this.commitLog.getBeginTimeInLock() != 0) {
-                            long lockTime = System.currentTimeMillis() - DefaultMessageStore.this.commitLog.getBeginTimeInLock();
-                            if (lockTime > 1000 && lockTime < 10000000) {
+        //region
+        this.scheduledExecutorService.scheduleAtFixedRate(() -> {
+            if (DefaultMessageStore.this.getMessageStoreConfig().isDebugLockEnable()) {
+                try {
+                    if (DefaultMessageStore.this.commitLog.getBeginTimeInLock() != 0) {
+                        long lockTime = System.currentTimeMillis() - DefaultMessageStore.this.commitLog.getBeginTimeInLock();
+                        if (lockTime > 1000 && lockTime < 10000000) {
 
-                                String stack = UtilAll.jstack();
-                                final String fileName = System.getProperty("user.home") + File.separator + "debug/lock/stack-"
-                                        + DefaultMessageStore.this.commitLog.getBeginTimeInLock() + "-" + lockTime;
-                                MixAll.string2FileNotSafe(stack, fileName);
-                            }
+                            String stack = UtilAll.jstack();
+                            String fileName = System.getProperty("user.home") + File.separator + "debug/lock/stack-"
+                                    + DefaultMessageStore.this.commitLog.getBeginTimeInLock() + "-" + lockTime;
+                            MixAll.string2FileNotSafe(stack, fileName);
                         }
-                    } catch (Exception e) {
                     }
+                } catch (Exception ignored) {
                 }
             }
         }, 1, 1, TimeUnit.SECONDS);
+        //endregion
 
         // this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
         // @Override
@@ -1359,12 +1353,10 @@ public class DefaultMessageStore implements MessageStore {
         // DefaultMessageStore.this.cleanExpiredConsumerQueue();
         // }
         // }, 1, 1, TimeUnit.HOURS);
-        this.diskCheckScheduledExecutorService.scheduleAtFixedRate(new Runnable() {
-            @Override
-            public void run() {
-                DefaultMessageStore.this.cleanCommitLogService.isSpaceFull();
-            }
-        }, 1000L, 10000L, TimeUnit.MILLISECONDS);
+
+        //region 每10s检查磁盘空间使用率
+        this.diskCheckScheduledExecutorService.scheduleAtFixedRate(DefaultMessageStore.this.cleanCommitLogService::isSpaceFull, 1000L, 10000L, TimeUnit.MILLISECONDS);
+        //endregion
     }
 
     private void cleanFilesPeriodically() {
@@ -1375,12 +1367,8 @@ public class DefaultMessageStore implements MessageStore {
     private void checkSelf() {
         this.commitLog.checkSelf();
 
-        Iterator<Entry<String, ConcurrentMap<Integer, ConsumeQueue>>> it = this.consumeQueueTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Entry<String, ConcurrentMap<Integer, ConsumeQueue>> next = it.next();
-            Iterator<Entry<Integer, ConsumeQueue>> itNext = next.getValue().entrySet().iterator();
-            while (itNext.hasNext()) {
-                Entry<Integer, ConsumeQueue> cq = itNext.next();
+        for (Entry<String, ConcurrentMap<Integer, ConsumeQueue>> next : this.consumeQueueTable.entrySet()) {
+            for (Entry<Integer, ConsumeQueue> cq : next.getValue().entrySet()) {
                 cq.getValue().checkSelf();
             }
         }
@@ -1607,6 +1595,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 清理文件commitlog service
+     */
     class CleanCommitLogService {
 
         private final static int MAX_MANUAL_DELETE_FILE_TIMES = 20;
@@ -1633,6 +1624,9 @@ public class DefaultMessageStore implements MessageStore {
             DefaultMessageStore.log.info("executeDeleteFilesManually was invoked");
         }
 
+        /**
+         * 删除过期文件
+         */
         public void run() {
             try {
                 this.deleteExpiredFiles();
@@ -1650,9 +1644,9 @@ public class DefaultMessageStore implements MessageStore {
             int deleteCount = 0;
             //日志保留时间 默认72小时
             long fileReservedTime = DefaultMessageStore.this.getMessageStoreConfig().getFileReservedTime();
-            //默认100
+            //删除commitlog文件间隔 默认100ms
             int deletePhysicFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteCommitLogFilesInterval();
-            //默认1000 * 120
+            //等待引用清空时间 默认1000 * 120
             int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
 
             //是否到了删除时间 磁盘使用率是否满足删除条件
@@ -1677,7 +1671,7 @@ public class DefaultMessageStore implements MessageStore {
                         cleanAtOnce);
 
                 fileReservedTime *= 60 * 60 * 1000;//72
-
+                //找到过期的commitlog并删除
                 deleteCount = DefaultMessageStore.this.commitLog.deleteExpiredFile(fileReservedTime, deletePhysicFilesInterval, destroyMapedFileIntervalForcibly, cleanAtOnce);
                 if (deleteCount > 0) {
                 } else if (spacefull) {
@@ -1687,18 +1681,17 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         /**
-         *
+         * 不停尝试删除第一个mappedfile【若有被删除文件 则必定在队头】
+         * 首次删除因其他地方有mapped引用而未删除成功
          */
         private void redeleteHangedFile() {
             int interval = DefaultMessageStore.this.getMessageStoreConfig().getRedeleteHangedFileInterval();
             long currentTimestamp = System.currentTimeMillis();
             if ((currentTimestamp - this.lastRedeleteTimestamp) > interval) {
                 this.lastRedeleteTimestamp = currentTimestamp;
-                int destroyMapedFileIntervalForcibly =
-                        DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
-                if (DefaultMessageStore.this.commitLog.retryDeleteFirstFile(destroyMapedFileIntervalForcibly)) {
-
-                }
+                //等待引用清空时间 超过时则强制清理内存映射并删除文件
+                int destroyMapedFileIntervalForcibly = DefaultMessageStore.this.getMessageStoreConfig().getDestroyMapedFileIntervalForcibly();
+                DefaultMessageStore.this.commitLog.retryDeleteFirstFile(destroyMapedFileIntervalForcibly);
             }
         }
 
@@ -1810,6 +1803,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 清理consumequeue & index service
+     */
     class CleanConsumeQueueService {
         private long lastPhysicalMinOffset = 0;
 
@@ -1822,13 +1818,15 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         private void deleteExpiredFiles() {
+            //删除文件间隔 默认100ms
             int deleteLogicsFilesInterval = DefaultMessageStore.this.getMessageStoreConfig().getDeleteConsumeQueueFilesInterval();
 
+            //删除commitlog中已经没有了的 consumerqueue 和 index
             long minOffset = DefaultMessageStore.this.commitLog.getMinOffset();
             if (minOffset > this.lastPhysicalMinOffset) {
                 this.lastPhysicalMinOffset = minOffset;
 
-                ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
+                ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
 
                 for (ConcurrentMap<Integer, ConsumeQueue> maps : tables.values()) {
                     for (ConsumeQueue logic : maps.values()) {
@@ -1852,6 +1850,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     *
+     */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
         private long lastFlushTimestamp = 0;
@@ -1922,16 +1923,31 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 将新的commitlog分发到各dispatcher 【写索引、写consumequeue、计算sql表达式filterbitmap】
+     */
     class ReputMessageService extends ServiceThread {
-
+        /**
+         * dispatch开始位置 【messagestore启动时读取最大consumequeue中最大offset】
+         */
+        @Getter
+        @Setter
         private volatile long reputFromOffset = 0;
 
-        public long getReputFromOffset() {
-            return reputFromOffset;
-        }
+        @Override
+        public void run() {
+            DefaultMessageStore.log.info(this.getServiceName() + " service started");
 
-        public void setReputFromOffset(long reputFromOffset) {
-            this.reputFromOffset = reputFromOffset;
+            while (!this.isStopped()) {
+                try {
+                    Thread.sleep(1);
+                    this.doReput();
+                } catch (Exception e) {
+                    DefaultMessageStore.log.warn(this.getServiceName() + " service has exception. ", e);
+                }
+            }
+
+            DefaultMessageStore.log.info(this.getServiceName() + " service end");
         }
 
         @Override
@@ -1951,10 +1967,16 @@ public class DefaultMessageStore implements MessageStore {
             super.shutdown();
         }
 
+        /**
+         * reput落后进度
+         */
         public long behind() {
             return DefaultMessageStore.this.commitLog.getMaxOffset() - this.reputFromOffset;
         }
 
+        /**
+         * 是否有新的commitlog可用 【commitlog最新offset大于reputoffset】
+         */
         private boolean isCommitLogAvailable() {
             return this.reputFromOffset < DefaultMessageStore.this.commitLog.getMaxOffset();
         }
@@ -2033,21 +2055,6 @@ public class DefaultMessageStore implements MessageStore {
             }
         }
 
-        @Override
-        public void run() {
-            DefaultMessageStore.log.info(this.getServiceName() + " service started");
-
-            while (!this.isStopped()) {
-                try {
-                    Thread.sleep(1);
-                    this.doReput();
-                } catch (Exception e) {
-                    DefaultMessageStore.log.warn(this.getServiceName() + " service has exception. ", e);
-                }
-            }
-
-            DefaultMessageStore.log.info(this.getServiceName() + " service end");
-        }
 
         @Override
         public String getServiceName() {

@@ -74,7 +74,7 @@ public class ConsumeMessageTraceHookImpl implements ConsumeMessageHook {
             traceBean.setStoreTime(msg.getStoreTimestamp());//
             traceBean.setBodyLength(msg.getStoreSize());//
             traceBean.setRetryTimes(msg.getReconsumeTimes());//
-            traceBean.setClientHost(((AsyncTraceDispatcher)localDispatcher).getHostConsumer().getmQClientFactory().getClientId());
+            traceBean.setClientHost(((AsyncTraceDispatcher)localDispatcher).getHostConsumer().getMQClientFactory().getClientId());
             traceContext.setRegionId(regionId);//
             beans.add(traceBean);
         }

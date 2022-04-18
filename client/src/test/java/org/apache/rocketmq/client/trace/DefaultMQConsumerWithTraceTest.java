@@ -143,8 +143,8 @@ public class DefaultMQConsumerWithTraceTest {
 
         pushConsumer.start();
 
-        mQClientFactory = spy(pushConsumerImpl.getmQClientFactory());
-        mQClientTraceFactory = spy(pushConsumerImpl.getmQClientFactory());
+        mQClientFactory = spy(pushConsumerImpl.getMQClientFactory());
+        mQClientTraceFactory = spy(pushConsumerImpl.getMQClientFactory());
 
         field = DefaultMQPushConsumerImpl.class.getDeclaredField("mQClientFactory");
         field.setAccessible(true);
@@ -167,7 +167,7 @@ public class DefaultMQConsumerWithTraceTest {
         field.setAccessible(true);
         field.set(pushConsumerImpl, pullAPIWrapper);
 
-        pushConsumer.getDefaultMQPushConsumerImpl().getRebalanceImpl().setmQClientFactory(mQClientFactory);
+        pushConsumer.getDefaultMQPushConsumerImpl().getRebalanceImpl().setMQClientFactory(mQClientFactory);
         mQClientFactory.registerConsumer(consumerGroup, pushConsumerImpl);
 
         when(mQClientFactory.getMQClientAPIImpl().pullMessage(anyString(), any(PullMessageRequestHeader.class),
