@@ -20,6 +20,9 @@ import java.nio.ByteBuffer;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 索引header信息
+ */
 public class IndexHeader {
     public static final int INDEX_HEADER_SIZE = 40;
     private static int beginTimestampIndex = 0;
@@ -29,12 +32,30 @@ public class IndexHeader {
     private static int hashSlotcountIndex = 32;
     private static int indexCountIndex = 36;
     private final ByteBuffer byteBuffer;
-    private AtomicLong beginTimestamp = new AtomicLong(0);
-    private AtomicLong endTimestamp = new AtomicLong(0);
-    private AtomicLong beginPhyOffset = new AtomicLong(0);
-    private AtomicLong endPhyOffset = new AtomicLong(0);
-    private AtomicInteger hashSlotCount = new AtomicInteger(0);
 
+    /**
+     * 最早消息存储时间
+     */
+    private AtomicLong beginTimestamp = new AtomicLong(0);
+    /**
+     * 最近消息存储时间
+     */
+    private AtomicLong endTimestamp = new AtomicLong(0);
+    /**
+     * 最早消息offset
+     */
+    private AtomicLong beginPhyOffset = new AtomicLong(0);
+    /**
+     * 最近消息offset
+     */
+    private AtomicLong endPhyOffset = new AtomicLong(0);
+    /**
+     * 使用了的hash槽数量 【应该等于被索引消息总数，否则存在hash冲突】
+     */
+    private AtomicInteger hashSlotCount = new AtomicInteger(0);
+    /**
+     * 被索引消息总数
+     */
     private AtomicInteger indexCount = new AtomicInteger(1);
 
     public IndexHeader(final ByteBuffer byteBuffer) {
