@@ -44,14 +44,14 @@ public class StoreCheckpoint {
     private volatile long physicMsgTimestamp = 0;
 
     /**
-     * consumequeue 最后存储时间
+     * consumequeue 最后刷盘时间
      */
     @Getter
     @Setter
     private volatile long logicsMsgTimestamp = 0;
 
     /**
-     * index 最后存储时间
+     * index 最后刷盘时间
      */
     @Getter
     @Setter

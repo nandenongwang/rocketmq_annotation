@@ -55,6 +55,7 @@ public class DefaultMessageStore implements MessageStore {
 
     private final MessageStoreConfig messageStoreConfig;
     // CommitLog
+    @Getter
     private final CommitLog commitLog;
 
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
@@ -80,6 +81,7 @@ public class DefaultMessageStore implements MessageStore {
     private final TransientStorePool transientStorePool;
 
     private final RunningFlags runningFlags = new RunningFlags();
+    @Getter
     private final SystemClock systemClock = new SystemClock();
 
     private final ScheduledExecutorService scheduledExecutorService =
@@ -92,11 +94,11 @@ public class DefaultMessageStore implements MessageStore {
 
     private StoreCheckpoint storeCheckpoint;
 
-    private AtomicLong printTimes = new AtomicLong(0);
+    private final AtomicLong printTimes = new AtomicLong(0);
 
     private final LinkedList<CommitLogDispatcher> dispatcherList;
 
-    private RandomAccessFile lockFile;
+    private final RandomAccessFile lockFile;
 
     private FileLock lock;
 
@@ -105,8 +107,10 @@ public class DefaultMessageStore implements MessageStore {
     private final ScheduledExecutorService diskCheckScheduledExecutorService =
             Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("DiskCheckScheduledThread"));
 
-    public DefaultMessageStore(final MessageStoreConfig messageStoreConfig, final BrokerStatsManager brokerStatsManager,
-                               final MessageArrivingListener messageArrivingListener, final BrokerConfig brokerConfig) throws IOException {
+    public DefaultMessageStore(MessageStoreConfig messageStoreConfig,
+                               BrokerStatsManager brokerStatsManager,
+                               MessageArrivingListener messageArrivingListener,
+                               BrokerConfig brokerConfig) throws IOException {
         this.messageArrivingListener = messageArrivingListener;
         this.brokerConfig = brokerConfig;
         this.messageStoreConfig = messageStoreConfig;
@@ -414,6 +418,9 @@ public class DefaultMessageStore implements MessageStore {
         return PutMessageStatus.PUT_OK;
     }
 
+    /**
+     * 异步存储消息
+     */
     @Override
     public CompletableFuture<PutMessageResult> asyncPutMessage(MessageExtBrokerInner msg) {
 
@@ -451,8 +458,12 @@ public class DefaultMessageStore implements MessageStore {
         return putResultFuture;
     }
 
+    /**
+     * 异步存储批量消息
+     */
     @Override
     public CompletableFuture<PutMessageResult> asyncPutMessages(MessageExtBatch messageExtBatch) {
+        //region 检测messagestore工作状态&消息格式
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return CompletableFuture.completedFuture(new PutMessageResult(checkStoreStatus, null));
@@ -462,10 +473,14 @@ public class DefaultMessageStore implements MessageStore {
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return CompletableFuture.completedFuture(new PutMessageResult(msgCheckStatus, null));
         }
+        //endregion
 
         long beginTime = this.getSystemClock().now();
+
+        //异步存储
         CompletableFuture<PutMessageResult> resultFuture = this.commitLog.asyncPutMessages(messageExtBatch);
 
+        //region 计算统计数据
         resultFuture.thenAccept((result) -> {
             long elapsedTime = this.getSystemClock().now() - beginTime;
             if (elapsedTime > 500) {
@@ -478,12 +493,16 @@ public class DefaultMessageStore implements MessageStore {
                 this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
             }
         });
-
+        //endregion
         return resultFuture;
     }
 
+    /**
+     * 同步存储消息
+     */
     @Override
     public PutMessageResult putMessage(MessageExtBrokerInner msg) {
+        //region 检查
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
         if (checkStoreStatus != PutMessageStatus.PUT_OK) {
             return new PutMessageResult(checkStoreStatus, null);
@@ -493,9 +512,13 @@ public class DefaultMessageStore implements MessageStore {
         if (msgCheckStatus == PutMessageStatus.MESSAGE_ILLEGAL) {
             return new PutMessageResult(msgCheckStatus, null);
         }
-
+        //endregion
         long beginTime = this.getSystemClock().now();
+
+        //同步存储
         PutMessageResult result = this.commitLog.putMessage(msg);
+
+        //region 更新统计数据
         long elapsedTime = this.getSystemClock().now() - beginTime;
         if (elapsedTime > 500) {
             log.warn("not in lock elapsed time(ms)={}, bodyLength={}", elapsedTime, msg.getBody().length);
@@ -506,10 +529,13 @@ public class DefaultMessageStore implements MessageStore {
         if (null == result || !result.isOk()) {
             this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
         }
-
+        //endregion
         return result;
     }
 
+    /**
+     * 同步存储批量消息
+     */
     @Override
     public PutMessageResult putMessages(MessageExtBatch messageExtBatch) {
         PutMessageStatus checkStoreStatus = this.checkStoreStatus();
@@ -538,26 +564,21 @@ public class DefaultMessageStore implements MessageStore {
         return result;
     }
 
+    /**
+     * 上次写入没有完成且 差距<10000000且>1000
+     */
     @Override
     public boolean isOSPageCacheBusy() {
-        long begin = this.getCommitLog().getBeginTimeInLock();
+        long begin = this.commitLog.getBeginTimeInLock();
         long diff = this.systemClock.now() - begin;
 
-        return diff < 10000000
-                && diff > this.messageStoreConfig.getOsPageCacheBusyTimeOutMills();
+        return diff < 10_000_000
+                && diff > this.messageStoreConfig.getOsPageCacheBusyTimeOutMills()/* 1000 */;
     }
 
     @Override
     public long lockTimeMills() {
         return this.commitLog.lockTimeMills();
-    }
-
-    public SystemClock getSystemClock() {
-        return systemClock;
-    }
-
-    public CommitLog getCommitLog() {
-        return commitLog;
     }
 
     @Override
@@ -1568,11 +1589,14 @@ public class DefaultMessageStore implements MessageStore {
         }, 6, TimeUnit.SECONDS);
     }
 
+    /**
+     * 构建consumequeue dispatcher
+     */
     class CommitLogDispatcherBuildConsumeQueue implements CommitLogDispatcher {
 
         @Override
         public void dispatch(DispatchRequest request) {
-            final int tranType = MessageSysFlag.getTransactionValue(request.getSysFlag());
+            int tranType = MessageSysFlag.getTransactionValue(request.getSysFlag());
             switch (tranType) {
                 case MessageSysFlag.TRANSACTION_NOT_TYPE:
                 case MessageSysFlag.TRANSACTION_COMMIT_TYPE:
@@ -1585,6 +1609,9 @@ public class DefaultMessageStore implements MessageStore {
         }
     }
 
+    /**
+     * 构建index dispatcher
+     */
     class CommitLogDispatcherBuildIndex implements CommitLogDispatcher {
 
         @Override
@@ -1851,47 +1878,11 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     *
+     * consumequeue后台刷盘
      */
     class FlushConsumeQueueService extends ServiceThread {
         private static final int RETRY_TIMES_OVER = 3;
         private long lastFlushTimestamp = 0;
-
-        private void doFlush(int retryTimes) {
-            int flushConsumeQueueLeastPages = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueLeastPages();
-
-            if (retryTimes == RETRY_TIMES_OVER) {
-                flushConsumeQueueLeastPages = 0;
-            }
-
-            long logicsMsgTimestamp = 0;
-
-            int flushConsumeQueueThoroughInterval = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueThoroughInterval();
-            long currentTimeMillis = System.currentTimeMillis();
-            if (currentTimeMillis >= (this.lastFlushTimestamp + flushConsumeQueueThoroughInterval)) {
-                this.lastFlushTimestamp = currentTimeMillis;
-                flushConsumeQueueLeastPages = 0;
-                logicsMsgTimestamp = DefaultMessageStore.this.getStoreCheckpoint().getLogicsMsgTimestamp();
-            }
-
-            ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
-
-            for (ConcurrentMap<Integer, ConsumeQueue> maps : tables.values()) {
-                for (ConsumeQueue cq : maps.values()) {
-                    boolean result = false;
-                    for (int i = 0; i < retryTimes && !result; i++) {
-                        result = cq.flush(flushConsumeQueueLeastPages);
-                    }
-                }
-            }
-
-            if (0 == flushConsumeQueueLeastPages) {
-                if (logicsMsgTimestamp > 0) {
-                    DefaultMessageStore.this.getStoreCheckpoint().setLogicsMsgTimestamp(logicsMsgTimestamp);
-                }
-                DefaultMessageStore.this.getStoreCheckpoint().flush();
-            }
-        }
 
         @Override
         public void run() {
@@ -1911,6 +1902,47 @@ public class DefaultMessageStore implements MessageStore {
 
             DefaultMessageStore.log.info(this.getServiceName() + " service end");
         }
+
+        private void doFlush(int retryTimes) {
+            //至少有多少脏页才刷盘
+            int flushConsumeQueueLeastPages = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueLeastPages();
+            //结束时只要有脏页就刷盘
+            if (retryTimes == RETRY_TIMES_OVER) {
+                flushConsumeQueueLeastPages = 0;
+            }
+
+            long logicsMsgTimestamp = 0;
+            //region 是否满足刷盘间隔时间
+            int flushConsumeQueueThoroughInterval = DefaultMessageStore.this.getMessageStoreConfig().getFlushConsumeQueueThoroughInterval();
+            long currentTimeMillis = System.currentTimeMillis();
+            if (currentTimeMillis >= (this.lastFlushTimestamp + flushConsumeQueueThoroughInterval)) {
+                this.lastFlushTimestamp = currentTimeMillis;
+                flushConsumeQueueLeastPages = 0;
+                logicsMsgTimestamp = DefaultMessageStore.this.getStoreCheckpoint().getLogicsMsgTimestamp();
+            }
+            //endregion
+
+            //region 检查每个consumequeue进行刷盘
+            ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> tables = DefaultMessageStore.this.consumeQueueTable;
+            for (ConcurrentMap<Integer, ConsumeQueue> maps : tables.values()) {
+                for (ConsumeQueue cq : maps.values()) {
+                    boolean result = false;
+                    for (int i = 0; i < retryTimes && !result; i++) {
+                        result = cq.flush(flushConsumeQueueLeastPages);
+                    }
+                }
+            }
+            //endregion
+
+            //结束时刷新保存点文件 consume
+            if (0 == flushConsumeQueueLeastPages) {
+                if (logicsMsgTimestamp > 0) {
+                    DefaultMessageStore.this.getStoreCheckpoint().setLogicsMsgTimestamp(logicsMsgTimestamp);
+                }
+                DefaultMessageStore.this.getStoreCheckpoint().flush();
+            }
+        }
+
 
         @Override
         public String getServiceName() {
@@ -1968,7 +2000,7 @@ public class DefaultMessageStore implements MessageStore {
         }
 
         /**
-         * reput落后进度
+         * 获取reput落后进度
          */
         public long behind() {
             return DefaultMessageStore.this.commitLog.getMaxOffset() - this.reputFromOffset;
@@ -2005,8 +2037,11 @@ public class DefaultMessageStore implements MessageStore {
 
                             if (dispatchRequest.isSuccess()) {
                                 if (size > 0) {
+                                    //region 分发新消息给各个dispacher
                                     DefaultMessageStore.this.doDispatch(dispatchRequest);
+                                    //endregion
 
+                                    //region 唤醒长轮训挂起的pull请求 【非slavebroker&开启长轮训】
                                     if (BrokerRole.SLAVE != DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole()
                                             && DefaultMessageStore.this.brokerConfig.isLongPollingEnable()) {
                                         DefaultMessageStore.this.messageArrivingListener.arriving(dispatchRequest.getTopic(),
@@ -2014,16 +2049,16 @@ public class DefaultMessageStore implements MessageStore {
                                                 dispatchRequest.getTagsCode(), dispatchRequest.getStoreTimestamp(),
                                                 dispatchRequest.getBitMap(), dispatchRequest.getPropertiesMap());
                                     }
+                                    //endregion
 
                                     this.reputFromOffset += size;
                                     readSize += size;
+                                    //region 更新storestats统计数据 【reput时更新slave的put消息次数和大小，master send消息时已经更新过】
                                     if (DefaultMessageStore.this.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE) {
-                                        DefaultMessageStore.this.storeStatsService
-                                                .getSinglePutMessageTopicTimesTotal(dispatchRequest.getTopic()).incrementAndGet();
-                                        DefaultMessageStore.this.storeStatsService
-                                                .getSinglePutMessageTopicSizeTotal(dispatchRequest.getTopic())
-                                                .addAndGet(dispatchRequest.getMsgSize());
+                                        DefaultMessageStore.this.storeStatsService.getSinglePutMessageTopicTimesTotal(dispatchRequest.getTopic()).incrementAndGet();
+                                        DefaultMessageStore.this.storeStatsService.getSinglePutMessageTopicSizeTotal(dispatchRequest.getTopic()).addAndGet(dispatchRequest.getMsgSize());
                                     }
+                                    //endregion
                                 } else if (size == 0) {
                                     this.reputFromOffset = DefaultMessageStore.this.commitLog.rollNextFile(this.reputFromOffset);
                                     readSize = result.getSize();
@@ -2039,8 +2074,7 @@ public class DefaultMessageStore implements MessageStore {
                                     // it will not ignore the exception and fix the reputFromOffset variable
                                     if (DefaultMessageStore.this.getMessageStoreConfig().isEnableDLegerCommitLog() ||
                                             DefaultMessageStore.this.brokerConfig.getBrokerId() == MixAll.MASTER_ID) {
-                                        log.error("[BUG]dispatch message to consume queue error, COMMITLOG OFFSET: {}",
-                                                this.reputFromOffset);
+                                        log.error("[BUG]dispatch message to consume queue error, COMMITLOG OFFSET: {}", this.reputFromOffset);
                                         this.reputFromOffset += result.getSize() - readSize;
                                     }
                                 }

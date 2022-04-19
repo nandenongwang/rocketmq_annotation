@@ -28,6 +28,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
@@ -138,11 +140,11 @@ public class CommitLog {
     /**
      * Read CommitLog data, use data replication
      */
-    public SelectMappedBufferResult getData(final long offset) {
+    public SelectMappedBufferResult getData(long offset) {
         return this.getData(offset, offset == 0);
     }
 
-    public SelectMappedBufferResult getData(final long offset, final boolean returnFirstOnNotFound) {
+    public SelectMappedBufferResult getData(long offset, boolean returnFirstOnNotFound) {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
         MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset, returnFirstOnNotFound);
         if (mappedFile != null) {
@@ -163,8 +165,9 @@ public class CommitLog {
         if (!mappedFiles.isEmpty()) {
             // Began to recover from the last third file
             int index = mappedFiles.size() - 3;
-            if (index < 0)
+            if (index < 0) {
                 index = 0;
+            }
 
             MappedFile mappedFile = mappedFiles.get(index);
             ByteBuffer byteBuffer = mappedFile.sliceByteBuffer();
@@ -235,8 +238,7 @@ public class CommitLog {
      *
      * @return 0 Come the end of the file // >0 Normal messages // -1 Message checksum failure
      */
-    public DispatchRequest checkMessageAndReturnSize(java.nio.ByteBuffer byteBuffer, final boolean checkCRC,
-                                                     final boolean readBody) {
+    public DispatchRequest checkMessageAndReturnSize(java.nio.ByteBuffer byteBuffer, boolean checkCRC, boolean readBody) {
         try {
             // 1 TOTAL SIZE
             int totalSize = byteBuffer.getInt();
@@ -375,12 +377,15 @@ public class CommitLog {
                     preparedTransactionOffset,
                     propertiesMap
             );
-        } catch (Exception e) {
+        } catch (Exception ignored) {
         }
 
         return new DispatchRequest(-1, false /* success */);
     }
 
+    /**
+     * 计算消息总长度
+     */
     protected static int calMsgLength(int sysFlag, int bodyLength, int topicLength, int propertiesLength) {
         int bornhostLength = (sysFlag & MessageSysFlag.BORNHOST_V6_FLAG) == 0 ? 8 : 20;
         int storehostAddressLength = (sysFlag & MessageSysFlag.STOREHOSTADDRESS_V6_FLAG) == 0 ? 8 : 20;
@@ -559,8 +564,7 @@ public class CommitLog {
         String topic = msg.getTopic();
         int queueId = msg.getQueueId();
 
-        //region
-        //endregion
+        //region 处理事务消息延时？？？
         int tranType = MessageSysFlag.getTransactionValue(msg.getSysFlag());
         if (tranType == MessageSysFlag.TRANSACTION_NOT_TYPE || tranType == MessageSysFlag.TRANSACTION_COMMIT_TYPE) {
             // Delay Delivery
@@ -581,6 +585,7 @@ public class CommitLog {
                 msg.setQueueId(queueId);
             }
         }
+        //endregion
 
         long elapsedTimeInLock = 0;
         MappedFile unlockMappedFile = null;
@@ -604,10 +609,14 @@ public class CommitLog {
                 return CompletableFuture.completedFuture(new PutMessageResult(PutMessageStatus.CREATE_MAPEDFILE_FAILED, null));
             }
 
+            //region 写入页缓存中
             result = mappedFile.appendMessage(msg, this.appendMessageCallback);
+            //endregion
+
             switch (result.getStatus()) {
                 case PUT_OK:
                     break;
+                    //剩余空间不够了 新建commitlog文件重新写入
                 case END_OF_FILE:
                     unlockMappedFile = mappedFile;
                     // Create a new file, re-write the message
@@ -620,6 +629,7 @@ public class CommitLog {
                     }
                     result = mappedFile.appendMessage(msg, this.appendMessageCallback);
                     break;
+                    //消息过长
                 case MESSAGE_SIZE_EXCEEDED:
                 case PROPERTIES_SIZE_EXCEEDED:
                     beginTimeInLock = 0;
@@ -1017,7 +1027,7 @@ public class CommitLog {
 
     }
 
-    public PutMessageResult putMessages(final MessageExtBatch messageExtBatch) {
+    public PutMessageResult putMessages(MessageExtBatch messageExtBatch) {
         messageExtBatch.setStoreTimestamp(System.currentTimeMillis());
         AppendMessageResult result;
 
@@ -1168,8 +1178,9 @@ public class CommitLog {
         return null;
     }
 
-    public long rollNextFile(final long offset) {
+    public long rollNextFile(long offset) {
         int mappedFileSize = this.defaultMessageStore.getMessageStoreConfig().getMappedFileSizeCommitLog();
+        //2g400m + 1g -2g400m%1g = 3g400m-400m = 3g
         return offset + mappedFileSize - offset % mappedFileSize;
     }
 
@@ -1231,10 +1242,16 @@ public class CommitLog {
         return diff;
     }
 
-    abstract class FlushCommitLogService extends ServiceThread {
+    /**
+     * commitlog刷盘
+     */
+    abstract static class FlushCommitLogService extends ServiceThread {
         protected static final int RETRY_TIMES_OVER = 10;
     }
 
+    /**
+     *
+     */
     class CommitRealTimeService extends FlushCommitLogService {
 
         private long lastCommitTimestamp = 0;
@@ -1288,10 +1305,14 @@ public class CommitLog {
         }
     }
 
+    /**
+     *
+     */
     class FlushRealTimeService extends FlushCommitLogService {
         private long lastFlushTimestamp = 0;
         private long printTimes = 0;
 
+        @Override
         public void run() {
             CommitLog.log.info(this.getServiceName() + " service started");
 
@@ -1369,6 +1390,9 @@ public class CommitLog {
         }
     }
 
+    /**
+     *
+     */
     public static class GroupCommitRequest {
         private final long nextOffset;
         private CompletableFuture<PutMessageStatus> flushOKFuture = new CompletableFuture<>();
@@ -1400,7 +1424,7 @@ public class CommitLog {
     }
 
     /**
-     * GroupCommit Service
+     *
      */
     class GroupCommitService extends FlushCommitLogService {
         private volatile List<GroupCommitRequest> requestsWrite = new ArrayList<GroupCommitRequest>();
@@ -1493,12 +1517,16 @@ public class CommitLog {
         }
     }
 
+    /**
+     *
+     */
     class DefaultAppendMessageCallback implements AppendMessageCallback {
         // File at the end of the minimum fixed length empty
         private static final int END_FILE_MIN_BLANK_LENGTH = 4 + 4;
         private final ByteBuffer msgIdMemory;
         private final ByteBuffer msgIdV6Memory;
         // Store the message content
+        @Getter
         private final ByteBuffer msgStoreItemMemory;
         // The maximum length of the message
         private final int maxMessageSize;
@@ -1514,12 +1542,8 @@ public class CommitLog {
             this.maxMessageSize = size;
         }
 
-        public ByteBuffer getMsgStoreItemMemory() {
-            return msgStoreItemMemory;
-        }
-
-        public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
-                                            final MessageExtBrokerInner msgInner) {
+        @Override
+        public AppendMessageResult doAppend(long fileFromOffset, ByteBuffer byteBuffer, int maxBlank/* 剩余空间 */, MessageExtBrokerInner msgInner) {
             // STORETIMESTAMP + STOREHOSTADDRESS + OFFSET <br>
 
             // PHY OFFSET
@@ -1643,15 +1667,17 @@ public class CommitLog {
             this.msgStoreItemMemory.putLong(msgInner.getPreparedTransactionOffset());
             // 15 BODY
             this.msgStoreItemMemory.putInt(bodyLength);
-            if (bodyLength > 0)
+            if (bodyLength > 0) {
                 this.msgStoreItemMemory.put(msgInner.getBody());
+            }
             // 16 TOPIC
             this.msgStoreItemMemory.put((byte) topicLength);
             this.msgStoreItemMemory.put(topicData);
             // 17 PROPERTIES
             this.msgStoreItemMemory.putShort((short) propertiesLength);
-            if (propertiesLength > 0)
+            if (propertiesLength > 0) {
                 this.msgStoreItemMemory.put(propertiesData);
+            }
 
             final long beginTimeMills = CommitLog.this.defaultMessageStore.now();
             // Write messages to the queue buffer
@@ -1675,8 +1701,8 @@ public class CommitLog {
             return result;
         }
 
-        public AppendMessageResult doAppend(final long fileFromOffset, final ByteBuffer byteBuffer, final int maxBlank,
-                                            final MessageExtBatch messageExtBatch) {
+        @Override
+        public AppendMessageResult doAppend(long fileFromOffset, ByteBuffer byteBuffer, int maxBlank, MessageExtBatch messageExtBatch) {
             byteBuffer.mark();
             //physical offset
             long wroteOffset = fileFromOffset + byteBuffer.position();
@@ -1768,25 +1794,28 @@ public class CommitLog {
             return result;
         }
 
-        private void resetByteBuffer(final ByteBuffer byteBuffer, final int limit) {
+        private void resetByteBuffer(ByteBuffer byteBuffer, int limit) {
             byteBuffer.flip();
             byteBuffer.limit(limit);
         }
 
     }
 
+    /**
+     * 批量消息编码器
+     */
     public static class MessageExtBatchEncoder {
         // Store the message content
         private final ByteBuffer msgBatchMemory;
         // The maximum length of the message
         private final int maxMessageSize;
 
-        MessageExtBatchEncoder(final int size) {
+        MessageExtBatchEncoder(int size) {
             this.msgBatchMemory = ByteBuffer.allocateDirect(size);
             this.maxMessageSize = size;
         }
 
-        public ByteBuffer encode(final MessageExtBatch messageExtBatch) {
+        public ByteBuffer encode(MessageExtBatch messageExtBatch) {
             msgBatchMemory.clear(); //not thread-safe
             int totalMsgLen = 0;
             ByteBuffer messagesByteBuff = messageExtBatch.wrap();
@@ -1799,8 +1828,8 @@ public class CommitLog {
 
             // properties from MessageExtBatch
             String batchPropStr = MessageDecoder.messageProperties2String(messageExtBatch.getProperties());
-            final byte[] batchPropData = batchPropStr.getBytes(MessageDecoder.CHARSET_UTF8);
-            final short batchPropLen = (short) batchPropData.length;
+            byte[] batchPropData = batchPropStr.getBytes(MessageDecoder.CHARSET_UTF8);
+            short batchPropLen = (short) batchPropData.length;
 
             while (messagesByteBuff.hasRemaining()) {
                 // 1 TOTALSIZE
@@ -1821,13 +1850,13 @@ public class CommitLog {
                 int propertiesPos = messagesByteBuff.position();
                 messagesByteBuff.position(propertiesPos + propertiesLen);
 
-                final byte[] topicData = messageExtBatch.getTopic().getBytes(MessageDecoder.CHARSET_UTF8);
+                byte[] topicData = messageExtBatch.getTopic().getBytes(MessageDecoder.CHARSET_UTF8);
 
-                final int topicLength = topicData.length;
+                int topicLength = topicData.length;
 
-                final int msgLen = calMsgLength(messageExtBatch.getSysFlag(), bodyLen, topicLength,
-                        propertiesLen + batchPropLen);
+                int msgLen = calMsgLength(messageExtBatch.getSysFlag(), bodyLen, topicLength, propertiesLen + batchPropLen);
 
+                //region 检查要生成的单条消息和所有消息大小是否超过消息总大小限制
                 // Exceeds the maximum message
                 if (msgLen > this.maxMessageSize) {
                     CommitLog.log.warn("message size exceeded, msg total size: " + msgLen + ", msg body size: " + bodyLen
@@ -1840,6 +1869,7 @@ public class CommitLog {
                 if (totalMsgLen > maxMessageSize) {
                     throw new RuntimeException("message size exceeded");
                 }
+                //endregion
 
                 // 1 TOTALSIZE
                 this.msgBatchMemory.putInt(msgLen);
@@ -1873,8 +1903,9 @@ public class CommitLog {
                 this.msgBatchMemory.putLong(0);
                 // 15 BODY
                 this.msgBatchMemory.putInt(bodyLen);
-                if (bodyLen > 0)
+                if (bodyLen > 0) {
                     this.msgBatchMemory.put(messagesByteBuff.array(), bodyPos, bodyLen);
+                }
                 // 16 TOPIC
                 this.msgBatchMemory.put((byte) topicLength);
                 this.msgBatchMemory.put(topicData);

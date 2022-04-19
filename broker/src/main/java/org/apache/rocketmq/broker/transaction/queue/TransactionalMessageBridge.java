@@ -89,7 +89,7 @@ public class TransactionalMessageBridge {
     }
 
     /**
-     * 转换成half消息 【主要更新topic】
+     * 转换成half消息 【主要更新topic 设置TRANSACTION_NOT_TYPE】
      */
     private MessageExtBrokerInner parseHalfMessageInner(MessageExtBrokerInner msgInner) {
         MessageAccessor.putProperty(msgInner, MessageConst.PROPERTY_REAL_TOPIC, msgInner.getTopic());

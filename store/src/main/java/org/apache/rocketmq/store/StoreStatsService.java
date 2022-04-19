@@ -34,10 +34,8 @@ public class StoreStatsService extends ServiceThread {
 
     private final AtomicLong putMessageFailedTimes = new AtomicLong(0);
 
-    private final ConcurrentMap<String, AtomicLong> putMessageTopicTimesTotal =
-            new ConcurrentHashMap<String, AtomicLong>(128);
-    private final ConcurrentMap<String, AtomicLong> putMessageTopicSizeTotal =
-            new ConcurrentHashMap<String, AtomicLong>(128);
+    private final ConcurrentMap<String, AtomicLong> putMessageTopicTimesTotal = new ConcurrentHashMap<>(128);
+    private final ConcurrentMap<String, AtomicLong> putMessageTopicSizeTotal = new ConcurrentHashMap<>(128);
 
     private final AtomicLong getMessageTimesTotalFound = new AtomicLong(0);
     private final AtomicLong getMessageTransferedMsgCount = new AtomicLong(0);
