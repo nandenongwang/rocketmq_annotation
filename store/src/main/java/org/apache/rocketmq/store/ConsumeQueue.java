@@ -20,6 +20,8 @@ import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.List;
 
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
@@ -35,13 +37,19 @@ public class ConsumeQueue {
     private final DefaultMessageStore defaultMessageStore;
 
     private final MappedFileQueue mappedFileQueue;
+    @Getter
     private final String topic;
+    @Getter
     private final int queueId;
     private final ByteBuffer byteBufferIndex;//20 byte
 
     private final String storePath;
     private final int mappedFileSize;//5.72MB
+    @Getter
+    @Setter
     private long maxPhysicOffset = -1;
+    @Getter
+    @Setter
     private volatile long minLogicOffset = 0;
     private ConsumeQueueExt consumeQueueExt = null;
 
@@ -379,11 +387,14 @@ public class ConsumeQueue {
         return this.minLogicOffset / CQ_STORE_UNIT_SIZE;
     }
 
+    //region 新消息写入consumequeue
     public void putMessagePositionInfoWrapper(DispatchRequest request) {
+        //重试次数
         final int maxRetries = 30;
         boolean canWrite = this.defaultMessageStore.getRunningFlags().isCQWriteable();
         for (int i = 0; i < maxRetries && canWrite; i++) {
             long tagsCode = request.getTagsCode();
+            //region 另外存储消息扩展部分 【默认不开启】
             if (isExtWriteEnable()) {
                 ConsumeQueueExt.CqExtUnit cqExtUnit = new ConsumeQueueExt.CqExtUnit();
                 cqExtUnit.setFilterBitMap(request.getBitMap());
@@ -398,13 +409,16 @@ public class ConsumeQueue {
                             topic, queueId, request.getCommitLogOffset());
                 }
             }
-            boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(),
-                    request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
+            //endregion
+            //region 写入
+            boolean result = this.putMessagePositionInfo(request.getCommitLogOffset(), request.getMsgSize(), tagsCode, request.getConsumeQueueOffset());
+            //endregion
             if (result) {
                 if (this.defaultMessageStore.getMessageStoreConfig().getBrokerRole() == BrokerRole.SLAVE ||
                         this.defaultMessageStore.getMessageStoreConfig().isEnableDLegerCommitLog()) {
                     this.defaultMessageStore.getStoreCheckpoint().setPhysicMsgTimestamp(request.getStoreTimestamp());
                 }
+                //更新checkpoint
                 this.defaultMessageStore.getStoreCheckpoint().setLogicsMsgTimestamp(request.getStoreTimestamp());
                 return;
             } else {
@@ -425,14 +439,13 @@ public class ConsumeQueue {
         this.defaultMessageStore.getRunningFlags().makeLogicsQueueError();
     }
 
-    private boolean putMessagePositionInfo(final long offset, final int size, final long tagsCode,
-                                           final long cqOffset) {
+    private boolean putMessagePositionInfo(long offset, int size, long tagsCode, long cqOffset) {
 
         if (offset + size <= this.maxPhysicOffset) {
             log.warn("Maybe try to build consume queue repeatedly maxPhysicOffset={} phyOffset={}", maxPhysicOffset, offset);
             return true;
         }
-
+        //8字节commitlogoffset + 4字节消息大小 + 8字节消息tag哈希码
         this.byteBufferIndex.flip();
         this.byteBufferIndex.limit(CQ_STORE_UNIT_SIZE);
         this.byteBufferIndex.putLong(offset);
@@ -479,6 +492,9 @@ public class ConsumeQueue {
         return false;
     }
 
+    /**
+     *
+     */
     private void fillPreBlank(final MappedFile mappedFile, final long untilWhere) {
         ByteBuffer byteBuffer = ByteBuffer.allocate(CQ_STORE_UNIT_SIZE);
         byteBuffer.putLong(0L);
@@ -490,6 +506,9 @@ public class ConsumeQueue {
             mappedFile.appendMessage(byteBuffer.array());
         }
     }
+
+    //endregion
+
 
     public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
         int mappedFileSize = this.mappedFileSize;
@@ -518,34 +537,10 @@ public class ConsumeQueue {
         return false;
     }
 
-    public long getMinLogicOffset() {
-        return minLogicOffset;
-    }
-
-    public void setMinLogicOffset(long minLogicOffset) {
-        this.minLogicOffset = minLogicOffset;
-    }
-
     public long rollNextFile(final long index) {
         int mappedFileSize = this.mappedFileSize;
         int totalUnitsInFile = mappedFileSize / CQ_STORE_UNIT_SIZE;
         return index + totalUnitsInFile - index % totalUnitsInFile;
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public int getQueueId() {
-        return queueId;
-    }
-
-    public long getMaxPhysicOffset() {
-        return maxPhysicOffset;
-    }
-
-    public void setMaxPhysicOffset(long maxPhysicOffset) {
-        this.maxPhysicOffset = maxPhysicOffset;
     }
 
     public void destroy() {

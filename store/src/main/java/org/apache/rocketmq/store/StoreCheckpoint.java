@@ -57,6 +57,7 @@ public class StoreCheckpoint {
     @Setter
     private volatile long indexMsgTimestamp = 0;
 
+    //region 会checkpoint文件中的值到内存
     public StoreCheckpoint(String scpPath) throws IOException {
         File file = new File(scpPath);
         MappedFile.ensureDirOK(file.getParent());
@@ -82,6 +83,7 @@ public class StoreCheckpoint {
             log.info("store checkpoint file not exists, " + scpPath);
         }
     }
+    //endregion
 
     public void shutdown() {
         this.flush();

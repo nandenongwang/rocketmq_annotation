@@ -48,7 +48,7 @@ public class TopicValidator {
     /**
      * Topics'set which client can not send msg!
      */
-    private static final Set<String> NOT_ALLOWED_SEND_TOPIC_SET = new HashSet<String>();
+    private static final Set<String> NOT_ALLOWED_SEND_TOPIC_SET = new HashSet<>();
 
     static {
         SYSTEM_TOPIC_SET.add(AUTO_CREATE_TOPIC_KEY_TOPIC);

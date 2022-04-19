@@ -57,7 +57,7 @@ public class DefaultMessageStore implements MessageStore {
     // CommitLog
     @Getter
     private final CommitLog commitLog;
-
+    @Getter
     private final ConcurrentMap<String/* topic */, ConcurrentMap<Integer/* queueId */, ConsumeQueue>> consumeQueueTable;
 
     private final FlushConsumeQueueService flushConsumeQueueService;
@@ -67,31 +67,32 @@ public class DefaultMessageStore implements MessageStore {
     private final CleanConsumeQueueService cleanConsumeQueueService;
 
     private final IndexService indexService;
-
+    @Getter
     private final AllocateMappedFileService allocateMappedFileService;
 
     private final ReputMessageService reputMessageService;
-
+    @Getter
     private final HAService haService;
-
+    @Getter
     private final ScheduleMessageService scheduleMessageService;
-
+    @Getter
     private final StoreStatsService storeStatsService;
 
     private final TransientStorePool transientStorePool;
-
+    @Getter
     private final RunningFlags runningFlags = new RunningFlags();
     @Getter
     private final SystemClock systemClock = new SystemClock();
 
     private final ScheduledExecutorService scheduledExecutorService =
             Executors.newSingleThreadScheduledExecutor(new ThreadFactoryImpl("StoreScheduledThread"));
+    @Getter
     private final BrokerStatsManager brokerStatsManager;
     private final MessageArrivingListener messageArrivingListener;
     private final BrokerConfig brokerConfig;
 
     private volatile boolean shutdown = true;
-
+    @Getter
     private StoreCheckpoint storeCheckpoint;
 
     private final AtomicLong printTimes = new AtomicLong(0);
@@ -1246,10 +1247,13 @@ public class DefaultMessageStore implements MessageStore {
         return null;
     }
 
+    /**
+     * 查询topic下指定queueId的consumequeue
+     */
     public ConsumeQueue findConsumeQueue(String topic, int queueId) {
         ConcurrentMap<Integer, ConsumeQueue> map = consumeQueueTable.get(topic);
         if (null == map) {
-            ConcurrentMap<Integer, ConsumeQueue> newMap = new ConcurrentHashMap<Integer, ConsumeQueue>(128);
+            ConcurrentMap<Integer, ConsumeQueue> newMap = new ConcurrentHashMap<>(128);
             ConcurrentMap<Integer, ConsumeQueue> oldMap = consumeQueueTable.putIfAbsent(topic, newMap);
             if (oldMap != null) {
                 map = oldMap;
@@ -1497,52 +1501,26 @@ public class DefaultMessageStore implements MessageStore {
         this.commitLog.setTopicQueueTable(table);
     }
 
-    public AllocateMappedFileService getAllocateMappedFileService() {
-        return allocateMappedFileService;
-    }
-
-    public StoreStatsService getStoreStatsService() {
-        return storeStatsService;
-    }
-
     public RunningFlags getAccessRights() {
         return runningFlags;
     }
 
-    public ConcurrentMap<String, ConcurrentMap<Integer, ConsumeQueue>> getConsumeQueueTable() {
-        return consumeQueueTable;
-    }
 
-    public StoreCheckpoint getStoreCheckpoint() {
-        return storeCheckpoint;
-    }
-
-    public HAService getHaService() {
-        return haService;
-    }
-
-    public ScheduleMessageService getScheduleMessageService() {
-        return scheduleMessageService;
-    }
-
-    public RunningFlags getRunningFlags() {
-        return runningFlags;
-    }
-
+    /**
+     * 分发新消息到各个dispatcher
+     */
     public void doDispatch(DispatchRequest req) {
         for (CommitLogDispatcher dispatcher : this.dispatcherList) {
             dispatcher.dispatch(req);
         }
     }
 
+    /**
+     * 添加consumequeue消息记录 【dispatcher】
+     */
     public void putMessagePositionInfo(DispatchRequest dispatchRequest) {
         ConsumeQueue cq = this.findConsumeQueue(dispatchRequest.getTopic(), dispatchRequest.getQueueId());
         cq.putMessagePositionInfoWrapper(dispatchRequest);
-    }
-
-    @Override
-    public BrokerStatsManager getBrokerStatsManager() {
-        return brokerStatsManager;
     }
 
     @Override
@@ -1566,6 +1544,9 @@ public class DefaultMessageStore implements MessageStore {
         return remainTransientStoreBufferNumbs() == 0;
     }
 
+    /**
+     * 获取所有dispatcher
+     */
     @Override
     public LinkedList<CommitLogDispatcher> getDispatcherList() {
         return this.dispatcherList;

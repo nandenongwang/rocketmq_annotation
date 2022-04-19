@@ -258,8 +258,8 @@ public class MQAdminImpl {
         throw new MQClientException("The broker[" + mq.getBrokerName() + "] not exist", null);
     }
 
-    public MessageExt viewMessage(
-            String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+
+    public MessageExt viewMessage(String msgId) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
 
         MessageId messageId = null;
         try {
@@ -271,10 +271,18 @@ public class MQAdminImpl {
                 messageId.getOffset(), timeoutMillis);
     }
 
+    //region 查询消息
+
+    /**
+     * 查询topic下特定key指定时间范围内的消息 【最多返回maxNum条】
+     */
     public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end) throws MQClientException, InterruptedException {
         return queryMessage(topic, key, maxNum, begin, end, false);
     }
 
+    /**
+     * 查询topic下指定消息uniqKey的消息 默认从uniqKey中取出生成时间往后查询
+     */
     public MessageExt queryMessageByUniqKey(String topic, String uniqKey) throws InterruptedException, MQClientException {
 
         QueryResult qr = this.queryMessage(topic, uniqKey, 32, MessageClientIDSetter.getNearlyTimeFromID(uniqKey).getTime() - 1000, Long.MAX_VALUE, true);
@@ -285,36 +293,49 @@ public class MQAdminImpl {
         }
     }
 
-    protected QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end, boolean isUniqKey) throws MQClientException, InterruptedException {
+    /**
+     * 消息查询
+     */
+    protected QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end, boolean isUniqKey/* 是否是通过消息ID查询 或key*/)
+            throws MQClientException, InterruptedException {
+        //region 获取路由信息
         TopicRouteData topicRouteData = this.mQClientFactory.getAnExistTopicRouteData(topic);
         if (null == topicRouteData) {
             this.mQClientFactory.updateTopicRouteInfoFromNameServer(topic);
             topicRouteData = this.mQClientFactory.getAnExistTopicRouteData(topic);
         }
+        //endregion
 
         if (topicRouteData != null) {
-            List<String> brokerAddrs = new LinkedList<String>();
+            List<String> brokerAddrs = new LinkedList<>();
+            //region 获取所有broker组的master地址 【从路由信息中可以直接获取topic位于哪个broker组中 不必要发多次请求】
             for (BrokerData brokerData : topicRouteData.getBrokerDatas()) {
                 String addr = brokerData.selectBrokerAddr();
                 if (addr != null) {
                     brokerAddrs.add(addr);
                 }
             }
+            //endregion
 
             if (!brokerAddrs.isEmpty()) {
-                final CountDownLatch countDownLatch = new CountDownLatch(brokerAddrs.size());
-                final List<QueryResult> queryResultList = new LinkedList<QueryResult>();
-                final ReadWriteLock lock = new ReentrantReadWriteLock(false);
+                CountDownLatch countDownLatch = new CountDownLatch(brokerAddrs.size());
+                ReadWriteLock lock = new ReentrantReadWriteLock(false);
+                //所有响应结果
+                List<QueryResult> queryResultList = new LinkedList<>();
 
+                //region 循环所有master地址发送查询请求
                 for (String addr : brokerAddrs) {
                     try {
+                        //region 组装查询请求
                         QueryMessageRequestHeader requestHeader = new QueryMessageRequestHeader();
                         requestHeader.setTopic(topic);
                         requestHeader.setKey(key);
                         requestHeader.setMaxNum(maxNum);
                         requestHeader.setBeginTimestamp(begin);
                         requestHeader.setEndTimestamp(end);
+                        //endregion
 
+                        //region 发送请求
                         this.mQClientFactory.getMQClientAPIImpl().queryMessage(addr, requestHeader, timeoutMillis * 3,
                                 new InvokeCallback() {
                                     @Override
@@ -322,33 +343,26 @@ public class MQAdminImpl {
                                         try {
                                             RemotingCommand response = responseFuture.getResponseCommand();
                                             if (response != null) {
-                                                switch (response.getCode()) {
-                                                    case ResponseCode.SUCCESS: {
-                                                        QueryMessageResponseHeader responseHeader = null;
-                                                        try {
-                                                            responseHeader =
-                                                                    (QueryMessageResponseHeader) response
-                                                                            .decodeCommandCustomHeader(QueryMessageResponseHeader.class);
-                                                        } catch (RemotingCommandException e) {
-                                                            log.error("decodeCommandCustomHeader exception", e);
-                                                            return;
-                                                        }
-
-                                                        List<MessageExt> wrappers =
-                                                                MessageDecoder.decodes(ByteBuffer.wrap(response.getBody()), true);
-
-                                                        QueryResult qr = new QueryResult(responseHeader.getIndexLastUpdateTimestamp(), wrappers);
-                                                        try {
-                                                            lock.writeLock().lock();
-                                                            queryResultList.add(qr);
-                                                        } finally {
-                                                            lock.writeLock().unlock();
-                                                        }
-                                                        break;
+                                                if (response.getCode() == ResponseCode.SUCCESS) {
+                                                    QueryMessageResponseHeader responseHeader = null;
+                                                    try {
+                                                        responseHeader = (QueryMessageResponseHeader) response.decodeCommandCustomHeader(QueryMessageResponseHeader.class);
+                                                    } catch (RemotingCommandException e) {
+                                                        log.error("decodeCommandCustomHeader exception", e);
+                                                        return;
                                                     }
-                                                    default:
-                                                        log.warn("getResponseCommand failed, {} {}", response.getCode(), response.getRemark());
-                                                        break;
+
+                                                    List<MessageExt> wrappers = MessageDecoder.decodes(ByteBuffer.wrap(response.getBody()), true);
+
+                                                    QueryResult qr = new QueryResult(responseHeader.getIndexLastUpdateTimestamp(), wrappers);
+                                                    try {
+                                                        lock.writeLock().lock();
+                                                        queryResultList.add(qr);
+                                                    } finally {
+                                                        lock.writeLock().unlock();
+                                                    }
+                                                } else {
+                                                    log.warn("getResponseCommand failed, {} {}", response.getCode(), response.getRemark());
                                                 }
                                             } else {
                                                 log.warn("getResponseCommand return null");
@@ -358,44 +372,53 @@ public class MQAdminImpl {
                                         }
                                     }
                                 }, isUniqKey);
+                        //endregion
                     } catch (Exception e) {
                         log.warn("queryMessage exception", e);
                     }
 
                 }
+                //endregion
 
+                //region 等待所有请求响应完成
                 boolean ok = countDownLatch.await(timeoutMillis * 4, TimeUnit.MILLISECONDS);
                 if (!ok) {
                     log.warn("queryMessage, maybe some broker failed");
                 }
+                //endregion
 
                 long indexLastUpdateTimestamp = 0;
-                List<MessageExt> messageList = new LinkedList<MessageExt>();
+                List<MessageExt> messageList = new LinkedList<>();
+
+                //region 获取index最后更新时间
                 for (QueryResult qr : queryResultList) {
                     if (qr.getIndexLastUpdateTimestamp() > indexLastUpdateTimestamp) {
                         indexLastUpdateTimestamp = qr.getIndexLastUpdateTimestamp();
                     }
+                }
+                //endregion
 
+                for (QueryResult qr : queryResultList) {
                     for (MessageExt msgExt : qr.getMessageList()) {
+                        //region 处理key为消息ID
                         if (isUniqKey) {
                             if (msgExt.getMsgId().equals(key)) {
-
+                                //消息ID相同仅取最后新增的消息
                                 if (messageList.size() > 0) {
-
                                     if (messageList.get(0).getStoreTimestamp() > msgExt.getStoreTimestamp()) {
-
                                         messageList.clear();
                                         messageList.add(msgExt);
                                     }
-
                                 } else {
-
                                     messageList.add(msgExt);
                                 }
                             } else {
                                 log.warn("queryMessage by uniqKey, find message key not matched, maybe hash duplicate {}", msgExt.toString());
                             }
-                        } else {
+                        }
+                        //endregion
+                        //region 处理key为消息key【建立索引时已经按空格分割key值建立多个索引项 响应结果消息都是分割后的key 不必再次匹配】
+                        else {
                             String keys = msgExt.getKeys();
                             if (keys != null) {
                                 boolean matched = false;
@@ -416,24 +439,29 @@ public class MQAdminImpl {
                                 }
                             }
                         }
+                        //endregion
                     }
                 }
 
+                //region notimportant 略
                 //If namespace not null , reset Topic without namespace.
                 for (MessageExt messageExt : messageList) {
                     if (null != this.mQClientFactory.getClientConfig().getNamespace()) {
                         messageExt.setTopic(NamespaceUtil.withoutNamespace(messageExt.getTopic(), this.mQClientFactory.getClientConfig().getNamespace()));
                     }
                 }
-
                 if (!messageList.isEmpty()) {
                     return new QueryResult(indexLastUpdateTimestamp, messageList);
                 } else {
                     throw new MQClientException(ResponseCode.NO_MESSAGE, "query message by key finished, but no message.");
                 }
+                //endregion
             }
         }
 
         throw new MQClientException(ResponseCode.TOPIC_NOT_EXIST, "The topic[" + topic + "] not matched route info");
     }
+    //endregion
+
+
 }
