@@ -17,9 +17,13 @@
 package org.apache.rocketmq.client.producer;
 
 import java.util.List;
+
 import org.apache.rocketmq.common.message.Message;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * writequeue选择器 用于消息发送是客户端手动指定写入哪个queue
+ */
 public interface MessageQueueSelector {
     MessageQueue select(final List<MessageQueue> mqs, final Message msg, final Object arg);
 }
