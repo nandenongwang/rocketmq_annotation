@@ -227,8 +227,7 @@ public class DefaultMQPullConsumerImpl implements MQConsumerInner {
         }
     }
 
-    private PullResult pullSyncImpl(MessageQueue mq, SubscriptionData subscriptionData, long offset, int maxNums, boolean block,
-        long timeout)
+    private PullResult pullSyncImpl(MessageQueue mq, SubscriptionData subscriptionData, long offset, int maxNums, boolean block, long timeout)
         throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         this.isRunning();
 

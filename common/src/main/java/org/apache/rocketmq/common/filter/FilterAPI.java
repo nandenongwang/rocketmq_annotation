@@ -36,8 +36,7 @@ public class FilterAPI {
         return simple;
     }
 
-    public static SubscriptionData buildSubscriptionData(final String consumerGroup, String topic,
-        String subString) throws Exception {
+    public static SubscriptionData buildSubscriptionData(final String consumerGroup, String topic, String subString) throws Exception {
         SubscriptionData subscriptionData = new SubscriptionData();
         subscriptionData.setTopic(topic);
         subscriptionData.setSubString(subString);

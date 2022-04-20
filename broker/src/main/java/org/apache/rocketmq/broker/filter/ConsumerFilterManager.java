@@ -175,7 +175,7 @@ public class ConsumerFilterManager extends ConfigManager {
     }
 
     /**
-     *
+     * 获取消费组对指定topic的过滤数据
      */
     public ConsumerFilterData get(final String topic, final String consumerGroup) {
         if (!this.filterDataByTopic.containsKey(topic)) {
@@ -232,7 +232,7 @@ public class ConsumerFilterManager extends ConfigManager {
         }
 
         /**
-         *注销过滤配置
+         * 注销过滤配置
          */
         public void unRegister(String consumerGroup) {
             if (!this.groupFilterData.containsKey(consumerGroup)) {
@@ -251,8 +251,9 @@ public class ConsumerFilterManager extends ConfigManager {
 
             data.setDeadTime(now);
         }
+
         /**
-         *新增过滤配置
+         * 新增过滤配置
          */
         public boolean register(String consumerGroup, String expression, String type, BloomFilterData bloomFilterData, long clientVersion) {
             ConsumerFilterData old = this.groupFilterData.get(consumerGroup);
@@ -339,8 +340,9 @@ public class ConsumerFilterManager extends ConfigManager {
                 }
             }
         }
+
         /**
-         *重新激活过滤配置
+         * 重新激活过滤配置
          */
         protected void reAlive(ConsumerFilterData filterData) {
             long oldDeadTime = filterData.getDeadTime();

@@ -409,7 +409,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                     boolean brokerBusy = offset < pullRequest.getNextOffset();
                     log.info("the first time to pull message, so fix offset from broker. pullRequest: {} NewOffset: {} brokerBusy: {}", pullRequest, offset, brokerBusy);
 
-                    //pull请求中的offset 大于broker中记录的offset 重新冲broker记录的offset消费 存在重复消息
+                    //pull请求中的下次拉取offset 大于broker中记录的offset 重新冲broker记录的offset消费 存在重复消息
                     if (brokerBusy) {
                         log.info("[NOTIFYME]the first time to pull message, but pull request offset larger than broker consume offset. pullRequest: {} NewOffset: {}", pullRequest, offset);
                     }

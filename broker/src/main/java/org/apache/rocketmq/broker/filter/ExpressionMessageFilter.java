@@ -39,7 +39,13 @@ public class ExpressionMessageFilter implements MessageFilter {
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.FILTER_LOGGER_NAME);
 
     protected final SubscriptionData subscriptionData;
+    /**
+     * 消费组表达式过滤配置数据
+     */
     protected final ConsumerFilterData consumerFilterData;
+    /**
+     * 全局过滤管理器
+     */
     protected final ConsumerFilterManager consumerFilterManager;
     protected final boolean bloomDataValid;
 
@@ -57,26 +63,26 @@ public class ExpressionMessageFilter implements MessageFilter {
 
     @Override
     public boolean isMatchedByConsumeQueue(Long tagsCode, ConsumeQueueExt.CqExtUnit cqExtUnit) {
+        //消费者没配置订阅表示可消费所有消息
         if (null == subscriptionData) {
             return true;
         }
 
+        //classfilter弃用 默认true
         if (subscriptionData.isClassFilterMode()) {
             return true;
         }
 
         // by tags code.
         if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
-
+            //消息没有tag表示可被所有订阅消费
             if (tagsCode == null) {
                 return true;
             }
 
-            if (subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL)) {
-                return true;
-            }
-
-            return subscriptionData.getCodeSet().contains(tagsCode.intValue());
+            //消费者订阅了所有tags或者订阅tags中包含该消息tag
+            return subscriptionData.getSubString().equals(SubscriptionData.SUB_ALL)
+                    || subscriptionData.getCodeSet().contains(tagsCode.intValue());
         } else {
             // no expression or no bloom
             if (consumerFilterData == null || consumerFilterData.getExpression() == null
@@ -89,6 +95,7 @@ public class ExpressionMessageFilter implements MessageFilter {
                 log.debug("Pull matched because not in live: {}, {}", consumerFilterData, cqExtUnit);
                 return true;
             }
+            //如未开启扩展消息 则不进行表达式匹配 【】
 
             byte[] filterBitMap = cqExtUnit.getFilterBitMap();
             BloomFilter bloomFilter = this.consumerFilterManager.getBloomFilter();
