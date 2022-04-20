@@ -17,53 +17,36 @@
 package org.apache.rocketmq.client.consumer;
 
 import java.util.List;
+
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import org.apache.rocketmq.common.message.MessageExt;
 
+/**
+ * 拉取消息结果
+ */
+@Data
+@AllArgsConstructor
 public class PullResult {
+
+    /**
+     * 拉取状态码
+     */
     private final PullStatus pullStatus;
+    /**
+     * 下次拉取位置
+     */
     private final long nextBeginOffset;
+    /**
+     * 本次拉取消息最小offset
+     */
     private final long minOffset;
+    /**
+     * 本次拉取消息最大offset
+     */
     private final long maxOffset;
+    /**
+     * 本次拉取消息
+     */
     private List<MessageExt> msgFoundList;
-
-    public PullResult(PullStatus pullStatus, long nextBeginOffset, long minOffset, long maxOffset,
-        List<MessageExt> msgFoundList) {
-        super();
-        this.pullStatus = pullStatus;
-        this.nextBeginOffset = nextBeginOffset;
-        this.minOffset = minOffset;
-        this.maxOffset = maxOffset;
-        this.msgFoundList = msgFoundList;
-    }
-
-    public PullStatus getPullStatus() {
-        return pullStatus;
-    }
-
-    public long getNextBeginOffset() {
-        return nextBeginOffset;
-    }
-
-    public long getMinOffset() {
-        return minOffset;
-    }
-
-    public long getMaxOffset() {
-        return maxOffset;
-    }
-
-    public List<MessageExt> getMsgFoundList() {
-        return msgFoundList;
-    }
-
-    public void setMsgFoundList(List<MessageExt> msgFoundList) {
-        this.msgFoundList = msgFoundList;
-    }
-
-    @Override
-    public String toString() {
-        return "PullResult [pullStatus=" + pullStatus + ", nextBeginOffset=" + nextBeginOffset
-            + ", minOffset=" + minOffset + ", maxOffset=" + maxOffset + ", msgFoundList="
-            + (msgFoundList == null ? 0 : msgFoundList.size()) + "]";
-    }
 }
