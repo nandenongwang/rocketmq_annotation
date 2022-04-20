@@ -16,46 +16,34 @@
  */
 package org.apache.rocketmq.client.impl.consumer;
 
+import lombok.Data;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+/**
+ * 拉取消息请求
+ */
+@Data
 public class PullRequest {
+    /**
+     * 消费组
+     */
     private String consumerGroup;
+    /**
+     * 拉取queue
+     */
     private MessageQueue messageQueue;
+    /**
+     * 处理queue
+     */
     private ProcessQueue processQueue;
+    /**
+     * 下次拉取offset
+     */
     private long nextOffset;
+    /**
+     * 标识该pull请求首次被运行
+     */
     private boolean lockedFirst = false;
-
-    public boolean isLockedFirst() {
-        return lockedFirst;
-    }
-
-    public void setLockedFirst(boolean lockedFirst) {
-        this.lockedFirst = lockedFirst;
-    }
-
-    public String getConsumerGroup() {
-        return consumerGroup;
-    }
-
-    public void setConsumerGroup(String consumerGroup) {
-        this.consumerGroup = consumerGroup;
-    }
-
-    public MessageQueue getMessageQueue() {
-        return messageQueue;
-    }
-
-    public void setMessageQueue(MessageQueue messageQueue) {
-        this.messageQueue = messageQueue;
-    }
-
-    public long getNextOffset() {
-        return nextOffset;
-    }
-
-    public void setNextOffset(long nextOffset) {
-        this.nextOffset = nextOffset;
-    }
 
     @Override
     public int hashCode() {
@@ -91,14 +79,6 @@ public class PullRequest {
     @Override
     public String toString() {
         return "PullRequest [consumerGroup=" + consumerGroup + ", messageQueue=" + messageQueue
-            + ", nextOffset=" + nextOffset + "]";
-    }
-
-    public ProcessQueue getProcessQueue() {
-        return processQueue;
-    }
-
-    public void setProcessQueue(ProcessQueue processQueue) {
-        this.processQueue = processQueue;
+                + ", nextOffset=" + nextOffset + "]";
     }
 }
