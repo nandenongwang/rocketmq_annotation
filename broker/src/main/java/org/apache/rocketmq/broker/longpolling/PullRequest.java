@@ -17,56 +17,42 @@
 package org.apache.rocketmq.broker.longpolling;
 
 import io.netty.channel.Channel;
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import org.apache.rocketmq.common.protocol.heartbeat.SubscriptionData;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 import org.apache.rocketmq.store.MessageFilter;
 
+@Data
+@AllArgsConstructor
 public class PullRequest {
+    /**
+     * 原始请求命令
+     */
     private final RemotingCommand requestCommand;
+    /**
+     * 客户端channel
+     */
     private final Channel clientChannel;
+    /**
+     * 挂起超时 默认20s
+     */
     private final long timeoutMillis;
+    /**
+     * 挂起开始时间
+     */
     private final long suspendTimestamp;
+    /**
+     * 请求offset
+     */
     private final long pullFromThisOffset;
+    /**
+     * 订阅配置
+     */
     private final SubscriptionData subscriptionData;
+    /**
+     * 消息过滤器
+     */
     private final MessageFilter messageFilter;
 
-    public PullRequest(RemotingCommand requestCommand, Channel clientChannel, long timeoutMillis, long suspendTimestamp,
-        long pullFromThisOffset, SubscriptionData subscriptionData,
-        MessageFilter messageFilter) {
-        this.requestCommand = requestCommand;
-        this.clientChannel = clientChannel;
-        this.timeoutMillis = timeoutMillis;
-        this.suspendTimestamp = suspendTimestamp;
-        this.pullFromThisOffset = pullFromThisOffset;
-        this.subscriptionData = subscriptionData;
-        this.messageFilter = messageFilter;
-    }
-
-    public RemotingCommand getRequestCommand() {
-        return requestCommand;
-    }
-
-    public Channel getClientChannel() {
-        return clientChannel;
-    }
-
-    public long getTimeoutMillis() {
-        return timeoutMillis;
-    }
-
-    public long getSuspendTimestamp() {
-        return suspendTimestamp;
-    }
-
-    public long getPullFromThisOffset() {
-        return pullFromThisOffset;
-    }
-
-    public SubscriptionData getSubscriptionData() {
-        return subscriptionData;
-    }
-
-    public MessageFilter getMessageFilter() {
-        return messageFilter;
-    }
 }
