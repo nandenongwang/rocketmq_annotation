@@ -100,7 +100,9 @@ import org.apache.rocketmq.remoting.exception.RemotingTooMuchRequestException;
 public class DefaultMQProducerImpl implements MQProducerInner {
     private final InternalLogger log = ClientLogger.getLog();
     private final Random random = new Random();
+    @Getter
     private final DefaultMQProducer defaultMQProducer;
+    @Getter
     private final ConcurrentMap<String/* topic */, TopicPublishInfo> topicPublishInfoTable = new ConcurrentHashMap<>();
     private final ArrayList<SendMessageHook> sendMessageHookList = new ArrayList<>();
     private final RPCHook rpcHook;
@@ -145,11 +147,6 @@ public class DefaultMQProducerImpl implements MQProducerInner {
                 });
     }
 
-    public void registerCheckForbiddenHook(CheckForbiddenHook checkForbiddenHook) {
-        this.checkForbiddenHookList.add(checkForbiddenHook);
-        log.info("register a new checkForbiddenHook. hookName={}, allHookSize={}", checkForbiddenHook.hookName(),
-                checkForbiddenHookList.size());
-    }
 
     public void initTransactionEnv() {
         TransactionMQProducer producer = (TransactionMQProducer) this.defaultMQProducer;
@@ -175,6 +172,18 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     public void registerSendMessageHook(final SendMessageHook hook) {
         this.sendMessageHookList.add(hook);
         log.info("register sendMessage Hook, {}", hook.hookName());
+    }
+
+    public void setCallbackExecutor(ExecutorService callbackExecutor) {
+        this.mQClientFactory.getMQClientAPIImpl().getRemotingClient().setCallbackExecutor(callbackExecutor);
+    }
+
+    public ExecutorService getAsyncSenderExecutor() {
+        return null == asyncSenderExecutor ? defaultAsyncSenderExecutor : asyncSenderExecutor;
+    }
+
+    public void setAsyncSenderExecutor(ExecutorService asyncSenderExecutor) {
+        this.asyncSenderExecutor = asyncSenderExecutor;
     }
 
     public void start() throws MQClientException {
@@ -283,7 +292,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
 
     @Override
     public Set<String> getPublishTopicList() {
-        Set<String> topicList = new HashSet<String>();
+        Set<String> topicList = new HashSet<>();
         for (String key : this.topicPublishInfoTable.keySet()) {
             topicList.add(key);
         }
@@ -496,43 +505,6 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         send(msg, sendCallback, this.defaultMQProducer.getSendMsgTimeout());
     }
 
-    /**
-     * It will be removed at 4.4.0 cause for exception handling and the wrong Semantics of timeout. A new one will be
-     * provided in next version
-     *
-     * @param msg
-     * @param sendCallback
-     * @param timeout      the <code>sendCallback</code> will be invoked at most time
-     * @throws RejectedExecutionException
-     */
-    @Deprecated
-    public void send(final Message msg, final SendCallback sendCallback, final long timeout)
-            throws MQClientException, RemotingException, InterruptedException {
-        final long beginStartTime = System.currentTimeMillis();
-        ExecutorService executor = this.getAsyncSenderExecutor();
-        try {
-            executor.submit(new Runnable() {
-                @Override
-                public void run() {
-                    long costTime = System.currentTimeMillis() - beginStartTime;
-                    if (timeout > costTime) {
-                        try {
-                            sendDefaultImpl(msg, CommunicationMode.ASYNC, sendCallback, timeout - costTime);
-                        } catch (Exception e) {
-                            sendCallback.onException(e);
-                        }
-                    } else {
-                        sendCallback.onException(
-                                new RemotingTooMuchRequestException("DEFAULT ASYNC send call timeout"));
-                    }
-                }
-
-            });
-        } catch (RejectedExecutionException e) {
-            throw new MQClientException("executor rejected ", e);
-        }
-
-    }
 
     public MessageQueue selectOneMessageQueue(final TopicPublishInfo tpInfo, final String lastBrokerName) {
         return this.mqFaultStrategy.selectOneMessageQueue(tpInfo, lastBrokerName);
@@ -1000,10 +972,19 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         return false;
     }
 
+
+    //region sendMessage & CheckForbidden hook
+
+    /**
+     * 是否有CheckForbidden hook
+     */
     public boolean hasCheckForbiddenHook() {
         return !checkForbiddenHookList.isEmpty();
     }
 
+    /**
+     * 执行CheckForbidden钩子
+     */
     public void executeCheckForbiddenHook(final CheckForbiddenContext context) throws MQClientException {
         if (hasCheckForbiddenHook()) {
             for (CheckForbiddenHook hook : checkForbiddenHookList) {
@@ -1012,10 +993,25 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
+    /**
+     * 注册CheckForbidden hook
+     */
+    public void registerCheckForbiddenHook(CheckForbiddenHook checkForbiddenHook) {
+        this.checkForbiddenHookList.add(checkForbiddenHook);
+        log.info("register a new checkForbiddenHook. hookName={}, allHookSize={}", checkForbiddenHook.hookName(),
+                checkForbiddenHookList.size());
+    }
+
+    /**
+     * 是否有发送消息hook
+     */
     public boolean hasSendMessageHook() {
         return !this.sendMessageHookList.isEmpty();
     }
 
+    /**
+     * 执行发送消息hook前置钩子
+     */
     public void executeSendMessageHookBefore(final SendMessageContext context) {
         if (!this.sendMessageHookList.isEmpty()) {
             for (SendMessageHook hook : this.sendMessageHookList) {
@@ -1028,6 +1024,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
+    /**
+     * 执行发送消息hook后置钩子
+     */
     public void executeSendMessageHookAfter(final SendMessageContext context) {
         if (!this.sendMessageHookList.isEmpty()) {
             for (SendMessageHook hook : this.sendMessageHookList) {
@@ -1040,106 +1039,13 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
     }
 
-    /**
-     * DEFAULT ONEWAY -------------------------------------------------------
-     */
-    public void sendOneway(Message msg) throws MQClientException, RemotingException, InterruptedException {
-        try {
-            this.sendDefaultImpl(msg, CommunicationMode.ONEWAY, null, this.defaultMQProducer.getSendMsgTimeout());
-        } catch (MQBrokerException e) {
-            throw new MQClientException("unknown exception", e);
-        }
-    }
+    //endregion
 
-    /**
-     * KERNEL SYNC -------------------------------------------------------
-     */
-    public SendResult send(Message msg, MessageQueue mq)
-            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-        return send(msg, mq, this.defaultMQProducer.getSendMsgTimeout());
-    }
 
-    public SendResult send(Message msg, MessageQueue mq, long timeout)
-            throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
-        long beginStartTime = System.currentTimeMillis();
-        this.makeSureStateOK();
-        Validators.checkMessage(msg, this.defaultMQProducer);
 
-        if (!msg.getTopic().equals(mq.getTopic())) {
-            throw new MQClientException("message's topic not equal mq's topic", null);
-        }
+    //region 发送消息
 
-        long costTime = System.currentTimeMillis() - beginStartTime;
-        if (timeout < costTime) {
-            throw new RemotingTooMuchRequestException("call timeout");
-        }
-
-        return this.sendKernelImpl(msg, mq, CommunicationMode.SYNC, null, null, timeout);
-    }
-
-    /**
-     * KERNEL ASYNC -------------------------------------------------------
-     */
-    public void send(Message msg, MessageQueue mq, SendCallback sendCallback)
-            throws MQClientException, RemotingException, InterruptedException {
-        send(msg, mq, sendCallback, this.defaultMQProducer.getSendMsgTimeout());
-    }
-
-    /**
-     * It will be removed at 4.4.0 cause for exception handling and the wrong Semantics of timeout. A new one will be
-     * provided in next version
-     *
-     * @param msg
-     * @param mq
-     * @param sendCallback
-     * @param timeout      the <code>sendCallback</code> will be invoked at most time
-     * @throws MQClientException
-     * @throws RemotingException
-     * @throws InterruptedException
-     */
-    @Deprecated
-    public void send(final Message msg, final MessageQueue mq, final SendCallback sendCallback, final long timeout)
-            throws MQClientException, RemotingException, InterruptedException {
-        final long beginStartTime = System.currentTimeMillis();
-        ExecutorService executor = this.getAsyncSenderExecutor();
-        try {
-            executor.submit(new Runnable() {
-                @Override
-                public void run() {
-                    try {
-                        makeSureStateOK();
-                        Validators.checkMessage(msg, defaultMQProducer);
-
-                        if (!msg.getTopic().equals(mq.getTopic())) {
-                            throw new MQClientException("message's topic not equal mq's topic", null);
-                        }
-                        long costTime = System.currentTimeMillis() - beginStartTime;
-                        if (timeout > costTime) {
-                            try {
-                                sendKernelImpl(msg, mq, CommunicationMode.ASYNC, sendCallback, null,
-                                        timeout - costTime);
-                            } catch (MQBrokerException e) {
-                                throw new MQClientException("unknown exception", e);
-                            }
-                        } else {
-                            sendCallback.onException(new RemotingTooMuchRequestException("call timeout"));
-                        }
-                    } catch (Exception e) {
-                        sendCallback.onException(e);
-                    }
-
-                }
-
-            });
-        } catch (RejectedExecutionException e) {
-            throw new MQClientException("executor rejected ", e);
-        }
-
-    }
-
-    /**
-     * KERNEL ONEWAY -------------------------------------------------------
-     */
+    //region oneway发送
     public void sendOneway(Message msg, MessageQueue mq) throws MQClientException, RemotingException, InterruptedException {
         this.makeSureStateOK();
         Validators.checkMessage(msg, this.defaultMQProducer);
@@ -1149,10 +1055,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             throw new MQClientException("unknown exception", e);
         }
     }
+    //endregion
 
-    /**
-     * SELECT SYNC -------------------------------------------------------
-     */
+    //region 同步发送 【手动选择writequeue】
     public SendResult send(Message msg, MessageQueueSelector selector, Object arg)
             throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return send(msg, selector, arg, this.defaultMQProducer.getSendMsgTimeout());
@@ -1168,7 +1073,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             MessageQueueSelector selector,
             Object arg,
             CommunicationMode communicationMode,
-            SendCallback sendCallback, final long timeout
+            SendCallback sendCallback, long timeout
     ) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginStartTime = System.currentTimeMillis();
         this.makeSureStateOK();
@@ -1203,65 +1108,16 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         validateNameServerSetting();
         throw new MQClientException("No route info for this topic, " + msg.getTopic(), null);
     }
+    //endregion
 
-
-    /**
-     * It will be removed at 4.4.0 cause for exception handling and the wrong Semantics of timeout. A new one will be
-     * provided in next version
-     *
-     * @param msg
-     * @param selector
-     * @param arg
-     * @param sendCallback
-     * @param timeout      the <code>sendCallback</code> will be invoked at most time
-     * @throws MQClientException
-     * @throws RemotingException
-     * @throws InterruptedException
-     */
-    @Deprecated
-    public void send(Message msg, MessageQueueSelector selector, Object arg, SendCallback sendCallback, long timeout)
-            throws MQClientException, RemotingException, InterruptedException {
-        final long beginStartTime = System.currentTimeMillis();
-        ExecutorService executor = this.getAsyncSenderExecutor();
-        try {
-            executor.submit(new Runnable() {
-                @Override
-                public void run() {
-                    long costTime = System.currentTimeMillis() - beginStartTime;
-                    if (timeout > costTime) {
-                        try {
-                            try {
-                                sendSelectImpl(msg, selector, arg, CommunicationMode.ASYNC, sendCallback,
-                                        timeout - costTime);
-                            } catch (MQBrokerException e) {
-                                throw new MQClientException("unknownn exception", e);
-                            }
-                        } catch (Exception e) {
-                            sendCallback.onException(e);
-                        }
-                    } else {
-                        sendCallback.onException(new RemotingTooMuchRequestException("call timeout"));
-                    }
-                }
-
-            });
-        } catch (RejectedExecutionException e) {
-            throw new MQClientException("exector rejected ", e);
-        }
-    }
-
-
-    /**
-     * SELECT ASYNC -------------------------------------------------------
-     */
+    //region 异步发送 【手动选择writequeue】
     public void send(Message msg, MessageQueueSelector selector, Object arg, SendCallback sendCallback)
             throws MQClientException, RemotingException, InterruptedException {
         send(msg, selector, arg, sendCallback, this.defaultMQProducer.getSendMsgTimeout());
     }
+    //endregion
 
-    /**
-     * SELECT ONEWAY -------------------------------------------------------
-     */
+    //region oneway发送 【手动选择writequeue】
     public void sendOneway(Message msg, MessageQueueSelector selector, Object arg) throws MQClientException, RemotingException, InterruptedException {
         try {
             this.sendSelectImpl(msg, selector, arg, CommunicationMode.ONEWAY, null, this.defaultMQProducer.getSendMsgTimeout());
@@ -1269,11 +1125,9 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             throw new MQClientException("unknown exception", e);
         }
     }
+    //endregion
 
-
-    /**
-     * DEFAULT SYNC -------------------------------------------------------
-     */
+    //region 默认同步发送
     public SendResult send(Message msg) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return send(msg, this.defaultMQProducer.getSendMsgTimeout());
     }
@@ -1281,8 +1135,58 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     public SendResult send(Message msg, long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.sendDefaultImpl(msg, CommunicationMode.SYNC, null, timeout);
     }
+    //endregion
 
+    /**
+     * DEFAULT ONEWAY
+     */
+    public void sendOneway(Message msg) throws MQClientException, RemotingException, InterruptedException {
+        try {
+            this.sendDefaultImpl(msg, CommunicationMode.ONEWAY, null, this.defaultMQProducer.getSendMsgTimeout());
+        } catch (MQBrokerException e) {
+            throw new MQClientException("unknown exception", e);
+        }
+    }
+
+    /**
+     * KERNEL SYNC
+     */
+    public SendResult send(Message msg, MessageQueue mq) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        return send(msg, mq, this.defaultMQProducer.getSendMsgTimeout());
+    }
+
+    public SendResult send(Message msg, MessageQueue mq, long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+        long beginStartTime = System.currentTimeMillis();
+        this.makeSureStateOK();
+        Validators.checkMessage(msg, this.defaultMQProducer);
+
+        if (!msg.getTopic().equals(mq.getTopic())) {
+            throw new MQClientException("message's topic not equal mq's topic", null);
+        }
+
+        long costTime = System.currentTimeMillis() - beginStartTime;
+        if (timeout < costTime) {
+            throw new RemotingTooMuchRequestException("call timeout");
+        }
+
+        return this.sendKernelImpl(msg, mq, CommunicationMode.SYNC, null, null, timeout);
+    }
+
+    /**
+     * KERNEL ASYNC -------------------------------------------------------
+     */
+    public void send(Message msg, MessageQueue mq, SendCallback sendCallback) throws MQClientException, RemotingException, InterruptedException {
+        send(msg, mq, sendCallback, this.defaultMQProducer.getSendMsgTimeout());
+    }
+
+    //endregion
+
+    /**
+     * 发送事务消息
+     */
     public TransactionSendResult sendMessageInTransaction(Message msg, LocalTransactionExecuter localTransactionExecuter, final Object arg) throws MQClientException {
+        //region 前置检查并设置必要属性
+        //存在事务监听器、事务消息不支持延时、设置事务消息属性
         TransactionListener transactionListener = getCheckListener();
         if (null == localTransactionExecuter && null == transactionListener) {
             throw new MQClientException("tranExecutor is null", null);
@@ -1294,18 +1198,24 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         }
 
         Validators.checkMessage(msg, this.defaultMQProducer);
-
-        SendResult sendResult = null;
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_TRANSACTION_PREPARED, "true");
         MessageAccessor.putProperty(msg, MessageConst.PROPERTY_PRODUCER_GROUP, this.defaultMQProducer.getProducerGroup());
+        //endregion
+
+        SendResult sendResult = null;
+
+        //region 同步发送至broker
         try {
             sendResult = this.send(msg);
         } catch (Exception e) {
             throw new MQClientException("send message Exception", e);
         }
+        //endregion
 
         LocalTransactionState localTransactionState = LocalTransactionState.UNKNOW;
         Throwable localException = null;
+
+        //region 执行本地事务
         switch (sendResult.getSendStatus()) {
             case SEND_OK: {
                 try {
@@ -1345,13 +1255,17 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             default:
                 break;
         }
+        //endregion
 
+        //region 提交本地事务执行结果 【commit或rollback】
         try {
             this.endTransaction(sendResult, localTransactionState, localException);
         } catch (Exception e) {
             log.warn("local transaction execute " + localTransactionState + ", but end broker transaction failed", e);
         }
+        //endregion
 
+        //region 响应结果
         TransactionSendResult transactionSendResult = new TransactionSendResult();
         transactionSendResult.setSendStatus(sendResult.getSendStatus());
         transactionSendResult.setMessageQueue(sendResult.getMessageQueue());
@@ -1359,10 +1273,13 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         transactionSendResult.setQueueOffset(sendResult.getQueueOffset());
         transactionSendResult.setTransactionId(sendResult.getTransactionId());
         transactionSendResult.setLocalTransactionState(localTransactionState);
+        //endregion
         return transactionSendResult;
     }
 
-
+    /**
+     * 提交本地事务结果
+     */
     public void endTransaction(SendResult sendResult, LocalTransactionState localTransactionState, Throwable localException)
             throws RemotingException, InterruptedException, UnknownHostException {
         MessageId id;
@@ -1372,7 +1289,7 @@ public class DefaultMQProducerImpl implements MQProducerInner {
             id = MessageDecoder.decodeMessageId(sendResult.getMsgId());
         }
         String transactionId = sendResult.getTransactionId();
-        final String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(sendResult.getMessageQueue().getBrokerName());
+        String brokerAddr = this.mQClientFactory.findBrokerAddressInPublish(sendResult.getMessageQueue().getBrokerName());
         EndTransactionRequestHeader requestHeader = new EndTransactionRequestHeader();
         requestHeader.setTransactionId(transactionId);
         requestHeader.setCommitLogOffset(id.getOffset());
@@ -1394,24 +1311,10 @@ public class DefaultMQProducerImpl implements MQProducerInner {
         requestHeader.setTranStateTableOffset(sendResult.getQueueOffset());
         requestHeader.setMsgId(sendResult.getMsgId());
         String remark = localException != null ? ("executeLocalTransactionBranch exception: " + localException.toString()) : null;
-        this.mQClientFactory.getMQClientAPIImpl().endTransactionOneway(brokerAddr, requestHeader, remark,
-                this.defaultMQProducer.getSendMsgTimeout());
+        this.mQClientFactory.getMQClientAPIImpl().endTransactionOneway(brokerAddr, requestHeader, remark, this.defaultMQProducer.getSendMsgTimeout());
     }
 
-    public void setCallbackExecutor(final ExecutorService callbackExecutor) {
-        this.mQClientFactory.getMQClientAPIImpl().getRemotingClient().setCallbackExecutor(callbackExecutor);
-    }
-
-    public ExecutorService getAsyncSenderExecutor() {
-        return null == asyncSenderExecutor ? defaultAsyncSenderExecutor : asyncSenderExecutor;
-    }
-
-    public void setAsyncSenderExecutor(ExecutorService asyncSenderExecutor) {
-        this.asyncSenderExecutor = asyncSenderExecutor;
-    }
-
-
-    //region RPC
+    //region RPC请求
     public Message request(Message msg, long timeout) throws RequestTimeoutException, MQClientException, RemotingException, MQBrokerException, InterruptedException {
         long beginTimestamp = System.currentTimeMillis();
         prepareSendRequest(msg, timeout);
@@ -1624,14 +1527,6 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     }
     //endregion
 
-    public ConcurrentMap<String, TopicPublishInfo> getTopicPublishInfoTable() {
-        return topicPublishInfoTable;
-    }
-
-    public DefaultMQProducer getDefaultMQProducer() {
-        return defaultMQProducer;
-    }
-
     //region mqFaultStrategy
     public long[] getNotAvailableDuration() {
         return this.mqFaultStrategy.getNotAvailableDuration();
@@ -1658,5 +1553,138 @@ public class DefaultMQProducerImpl implements MQProducerInner {
     }
     //endregion
 
+    /**
+     * It will be removed at 4.4.0 cause for exception handling and the wrong Semantics of timeout. A new one will be
+     * provided in next version
+     *
+     * @param msg
+     * @param selector
+     * @param arg
+     * @param sendCallback
+     * @param timeout      the <code>sendCallback</code> will be invoked at most time
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
+    @Deprecated
+    public void send(Message msg, MessageQueueSelector selector, Object arg, SendCallback sendCallback, long timeout)
+            throws MQClientException, RemotingException, InterruptedException {
+        final long beginStartTime = System.currentTimeMillis();
+        ExecutorService executor = this.getAsyncSenderExecutor();
+        try {
+            executor.submit(new Runnable() {
+                @Override
+                public void run() {
+                    long costTime = System.currentTimeMillis() - beginStartTime;
+                    if (timeout > costTime) {
+                        try {
+                            try {
+                                sendSelectImpl(msg, selector, arg, CommunicationMode.ASYNC, sendCallback,
+                                        timeout - costTime);
+                            } catch (MQBrokerException e) {
+                                throw new MQClientException("unknownn exception", e);
+                            }
+                        } catch (Exception e) {
+                            sendCallback.onException(e);
+                        }
+                    } else {
+                        sendCallback.onException(new RemotingTooMuchRequestException("call timeout"));
+                    }
+                }
 
+            });
+        } catch (RejectedExecutionException e) {
+            throw new MQClientException("exector rejected ", e);
+        }
+    }
+
+
+    /**
+     * It will be removed at 4.4.0 cause for exception handling and the wrong Semantics of timeout. A new one will be
+     * provided in next version
+     *
+     * @param msg
+     * @param mq
+     * @param sendCallback
+     * @param timeout      the <code>sendCallback</code> will be invoked at most time
+     * @throws MQClientException
+     * @throws RemotingException
+     * @throws InterruptedException
+     */
+    @Deprecated
+    public void send(final Message msg, final MessageQueue mq, final SendCallback sendCallback, final long timeout)
+            throws MQClientException, RemotingException, InterruptedException {
+        final long beginStartTime = System.currentTimeMillis();
+        ExecutorService executor = this.getAsyncSenderExecutor();
+        try {
+            executor.submit(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        makeSureStateOK();
+                        Validators.checkMessage(msg, defaultMQProducer);
+
+                        if (!msg.getTopic().equals(mq.getTopic())) {
+                            throw new MQClientException("message's topic not equal mq's topic", null);
+                        }
+                        long costTime = System.currentTimeMillis() - beginStartTime;
+                        if (timeout > costTime) {
+                            try {
+                                sendKernelImpl(msg, mq, CommunicationMode.ASYNC, sendCallback, null,
+                                        timeout - costTime);
+                            } catch (MQBrokerException e) {
+                                throw new MQClientException("unknown exception", e);
+                            }
+                        } else {
+                            sendCallback.onException(new RemotingTooMuchRequestException("call timeout"));
+                        }
+                    } catch (Exception e) {
+                        sendCallback.onException(e);
+                    }
+
+                }
+
+            });
+        } catch (RejectedExecutionException e) {
+            throw new MQClientException("executor rejected ", e);
+        }
+
+    }
+
+    /**
+     * It will be removed at 4.4.0 cause for exception handling and the wrong Semantics of timeout. A new one will be
+     * provided in next version
+     *
+     * @param msg
+     * @param sendCallback
+     * @param timeout      the <code>sendCallback</code> will be invoked at most time
+     * @throws RejectedExecutionException
+     */
+    @Deprecated
+    public void send(final Message msg, final SendCallback sendCallback, final long timeout) throws MQClientException, RemotingException, InterruptedException {
+        long beginStartTime = System.currentTimeMillis();
+        ExecutorService executor = this.getAsyncSenderExecutor();
+        try {
+            executor.submit(new Runnable() {
+                @Override
+                public void run() {
+                    long costTime = System.currentTimeMillis() - beginStartTime;
+                    if (timeout > costTime) {
+                        try {
+                            sendDefaultImpl(msg, CommunicationMode.ASYNC, sendCallback, timeout - costTime);
+                        } catch (Exception e) {
+                            sendCallback.onException(e);
+                        }
+                    } else {
+                        sendCallback.onException(
+                                new RemotingTooMuchRequestException("DEFAULT ASYNC send call timeout"));
+                    }
+                }
+
+            });
+        } catch (RejectedExecutionException e) {
+            throw new MQClientException("executor rejected ", e);
+        }
+
+    }
 }

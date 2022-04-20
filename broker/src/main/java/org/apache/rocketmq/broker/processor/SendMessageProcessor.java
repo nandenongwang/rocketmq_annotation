@@ -621,6 +621,7 @@ public class SendMessageProcessor extends AbstractSendMessageProcessor implement
     /**
      * 获取broker地址&监听端口
      */
+    @Override
     public SocketAddress getStoreHost() {
         return storeHost;
     }
