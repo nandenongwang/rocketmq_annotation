@@ -449,17 +449,14 @@ public class MappedFileQueue {
     }
 
     /**
-     * Finds a mapped file by offset.
-     *
-     * @param offset                Offset.
-     * @param returnFirstOnNotFound If the mapped file is not found, then return the first one.
-     * @return Mapped file or null (when not found and returnFirstOnNotFound is <code>false</code>).
+     * 查找offset在哪个commitlog中
      */
-    public MappedFile findMappedFileByOffset(final long offset, final boolean returnFirstOnNotFound) {
+    public MappedFile findMappedFileByOffset(long offset, boolean returnFirstOnNotFound) {
         try {
             MappedFile firstMappedFile = this.getFirstMappedFile();
             MappedFile lastMappedFile = this.getLastMappedFile();
             if (firstMappedFile != null && lastMappedFile != null) {
+                //region offset非法
                 if (offset < firstMappedFile.getFileFromOffset() || offset >= lastMappedFile.getFileFromOffset() + this.mappedFileSize) {
                     LOG_ERROR.warn("Offset not matched. Request offset: {}, firstOffset: {}, lastOffset: {}, mappedFileSize: {}, mappedFiles count: {}",
                             offset,
@@ -467,7 +464,9 @@ public class MappedFileQueue {
                             lastMappedFile.getFileFromOffset() + this.mappedFileSize,
                             this.mappedFileSize,
                             this.mappedFiles.size());
-                } else {
+                }
+                //endregion
+                else {
                     int index = (int) ((offset / this.mappedFileSize) - (firstMappedFile.getFileFromOffset() / this.mappedFileSize));
                     MappedFile targetFile = null;
                     try {

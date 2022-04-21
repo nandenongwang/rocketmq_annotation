@@ -34,6 +34,7 @@ import org.apache.rocketmq.store.MappedFile;
  * hash槽 默认500_0000个4字节大小的key值hash槽 记录最新该槽位key的索引序号
  * 索引体 默认2000_0000个20字节大小的索引记录
  * 记录了4字节keyhash值+8字节offset+4字节存储时间差值+4字节上个相同hashkey的索引index
+ * key值：topic + "#" + key
  */
 public class IndexFile {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
