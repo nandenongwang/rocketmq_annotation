@@ -27,7 +27,8 @@ import java.nio.ByteBuffer;
 import java.util.Map;
 
 /**
- * 表达式消息过滤器 支持重试消息
+ * 表达式消息过滤器 支持重试消息过滤
+ * 默认关闭 重试消息存在说明首次消费时已经满足了过滤条件、无需再次过滤
  */
 public class ExpressionForRetryMessageFilter extends ExpressionMessageFilter {
     public ExpressionForRetryMessageFilter(SubscriptionData subscriptionData, ConsumerFilterData consumerFilterData, ConsumerFilterManager consumerFilterManager) {
