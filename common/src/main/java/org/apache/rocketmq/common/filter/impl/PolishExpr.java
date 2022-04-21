@@ -55,8 +55,9 @@ public class PolishExpr {
                 while (!operatorStack.empty() && LEFTPARENTHESIS != (opNew = operatorStack.pop())) {
                     segments.add(opNew);
                 }
-                if (null == opNew || LEFTPARENTHESIS != opNew)
+                if (null == opNew || LEFTPARENTHESIS != opNew) {
                     throw new IllegalArgumentException("mismatched parentheses");
+                }
             } else if (isOperator(token)) {
 
                 Operator opNew = (Operator) token;
@@ -67,14 +68,16 @@ public class PolishExpr {
                     }
                 }
                 operatorStack.push(opNew);
-            } else
+            } else {
                 throw new IllegalArgumentException("illegal token " + token);
+            }
         }
 
         while (!operatorStack.empty()) {
             Operator operator = operatorStack.pop();
-            if (LEFTPARENTHESIS == operator || RIGHTPARENTHESIS == operator)
+            if (LEFTPARENTHESIS == operator || RIGHTPARENTHESIS == operator) {
                 throw new IllegalArgumentException("mismatched parentheses " + operator);
+            }
             segments.add(operator);
         }
 
