@@ -38,15 +38,24 @@ public class ExpressionMessageFilter implements MessageFilter {
 
     protected static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.FILTER_LOGGER_NAME);
 
-    protected final SubscriptionData subscriptionData;
     /**
-     * 消费组表达式过滤配置数据
+     * 订阅配置
+     */
+    protected final SubscriptionData subscriptionData;
+
+    /**
+     * 过滤数据 topic@consumegroup的字节数组【作为布隆过滤器中存储单位】
      */
     protected final ConsumerFilterData consumerFilterData;
+
     /**
      * 全局过滤管理器
      */
     protected final ConsumerFilterManager consumerFilterManager;
+
+    /**
+     * 过滤数据是否是过滤管理器中布隆过滤器的存储单位
+     */
     protected final boolean bloomDataValid;
 
     public ExpressionMessageFilter(SubscriptionData subscriptionData, ConsumerFilterData consumerFilterData, ConsumerFilterManager consumerFilterManager) {
@@ -97,6 +106,7 @@ public class ExpressionMessageFilter implements MessageFilter {
             }
             //如未开启扩展消息 则不进行表达式匹配 【】
 
+            //从消息扩展部分取出消息满足订阅表达式的所有消费组
             byte[] filterBitMap = cqExtUnit.getFilterBitMap();
             BloomFilter bloomFilter = this.consumerFilterManager.getBloomFilter();
             if (filterBitMap == null || !this.bloomDataValid
@@ -104,6 +114,7 @@ public class ExpressionMessageFilter implements MessageFilter {
                 return true;
             }
 
+            //判断消费者拉取的 topic@consumegroup 是否在过滤器中进行粗筛 【仅保证不在的100%false 在的需从commitlog中取出消息properties完整匹配】
             BitsArray bitsArray = null;
             try {
                 bitsArray = BitsArray.create(filterBitMap);
@@ -121,6 +132,7 @@ public class ExpressionMessageFilter implements MessageFilter {
 
     @Override
     public boolean isMatchedByCommitLog(ByteBuffer msgBuffer, Map<String, String> properties) {
+        //region 同上
         if (subscriptionData == null) {
             return true;
         }
@@ -132,7 +144,9 @@ public class ExpressionMessageFilter implements MessageFilter {
         if (ExpressionType.isTagType(subscriptionData.getExpressionType())) {
             return true;
         }
+        //endregion
 
+        //region 重新计算properties是否满足表达式
         ConsumerFilterData realFilterData = this.consumerFilterData;
         Map<String, String> tempProperties = properties;
 
@@ -141,6 +155,7 @@ public class ExpressionMessageFilter implements MessageFilter {
                 || realFilterData.getCompiledExpression() == null) {
             return true;
         }
+
 
         if (tempProperties == null && msgBuffer != null) {
             tempProperties = MessageDecoder.decodeProperties(msgBuffer);
@@ -160,6 +175,7 @@ public class ExpressionMessageFilter implements MessageFilter {
         if (ret == null || !(ret instanceof Boolean)) {
             return false;
         }
+        //endregion
 
         return (Boolean) ret;
     }
