@@ -25,5 +25,5 @@ public enum ConsumeFromWhere {
     @Deprecated
     CONSUME_FROM_MIN_OFFSET,
     @Deprecated
-    CONSUME_FROM_MAX_OFFSET,
+    CONSUME_FROM_MAX_OFFSET;
 }
