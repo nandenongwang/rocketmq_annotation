@@ -1,22 +1,7 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.client.trace.hook;
 
 import java.util.ArrayList;
+
 import org.apache.rocketmq.client.hook.SendMessageContext;
 import org.apache.rocketmq.client.hook.SendMessageHook;
 import org.apache.rocketmq.client.producer.SendStatus;
@@ -27,6 +12,9 @@ import org.apache.rocketmq.client.trace.TraceDispatcher;
 import org.apache.rocketmq.client.trace.TraceType;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
 
+/**
+ * 发送消息hook 【消息追踪】
+ */
 public class SendMessageTraceHookImpl implements SendMessageHook {
 
     private TraceDispatcher localDispatcher;
@@ -60,7 +48,7 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
         traceBean.setStoreHost(context.getBrokerAddr());
         traceBean.setBodyLength(context.getMessage().getBody().length);
         traceBean.setMsgType(context.getMsgType());
-        traceBean.setClientHost(((AsyncTraceDispatcher)localDispatcher).getHostProducer().getmQClientFactory().getClientId());
+        traceBean.setClientHost(((AsyncTraceDispatcher) localDispatcher).getHostProducer().getmQClientFactory().getClientId());
         tuxeContext.getTraceBeans().add(traceBean);
     }
 
@@ -68,7 +56,7 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
     public void sendMessageAfter(SendMessageContext context) {
         //if it is message trace data,then it doesn't recorded
         if (context == null || context.getMessage().getTopic().startsWith(((AsyncTraceDispatcher) localDispatcher).getTraceTopicName())
-            || context.getMqTraceContext() == null) {
+                || context.getMqTraceContext() == null) {
             return;
         }
         if (context.getSendResult() == null) {
@@ -76,7 +64,7 @@ public class SendMessageTraceHookImpl implements SendMessageHook {
         }
 
         if (context.getSendResult().getRegionId() == null
-            || !context.getSendResult().isTraceOn()) {
+                || !context.getSendResult().isTraceOn()) {
             // if switch is false,skip it
             return;
         }

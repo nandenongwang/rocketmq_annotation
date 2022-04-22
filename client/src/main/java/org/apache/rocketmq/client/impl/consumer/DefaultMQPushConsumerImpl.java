@@ -766,7 +766,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 //参数检查
                 this.checkConfig();
 
-                //将topic 订阅信息和 相应retrytopic 复制到 rebalanceImpl
+                //注册topic订阅和重试topic订阅到 rebalanceImpl
                 this.copySubscription();
 
                 //region 设置consumer 实例名为pid
@@ -1049,8 +1049,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                 for (final Map.Entry<String, String> entry : sub.entrySet()) {
                     final String topic = entry.getKey();
                     final String subString = entry.getValue();
-                    SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(),
-                            topic, subString);
+                    SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(), topic, subString);
                     this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
                 }
             }
@@ -1064,8 +1063,7 @@ public class DefaultMQPushConsumerImpl implements MQConsumerInner {
                     break;
                 case CLUSTERING:
                     final String retryTopic = MixAll.getRetryTopic(this.defaultMQPushConsumer.getConsumerGroup());
-                    SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(),
-                            retryTopic, SubscriptionData.SUB_ALL);
+                    SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(this.defaultMQPushConsumer.getConsumerGroup(), retryTopic, SubscriptionData.SUB_ALL);
                     this.rebalanceImpl.getSubscriptionInner().put(retryTopic, subscriptionData);
                     break;
                 default:

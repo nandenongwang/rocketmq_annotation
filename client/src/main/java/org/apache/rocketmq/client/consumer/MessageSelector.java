@@ -1,50 +1,26 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.rocketmq.client.consumer;
 
+import lombok.AllArgsConstructor;
+import lombok.Data;
 import org.apache.rocketmq.common.filter.ExpressionType;
 
 /**
- * Message selector: select message at server.
- * <p>
- * Now, support:
- * <li>Tag: {@link org.apache.rocketmq.common.filter.ExpressionType#TAG}
- * </li>
- * <li>SQL92: {@link org.apache.rocketmq.common.filter.ExpressionType#SQL92}
- * </li>
- * </p>
+ * 消息筛选器 封装业务侧订阅配置 【过滤类型和过滤表达式】
  */
+@AllArgsConstructor
+@Data
 public class MessageSelector {
 
     /**
-     * @see org.apache.rocketmq.common.filter.ExpressionType
+     * 过滤类型 tags获取sql
      */
-    private String type;
+    private final String expressionType;
 
     /**
-     * expression content.
+     * 过滤表达式
      */
-    private String expression;
+    private final String expression;
 
-    private MessageSelector(String type, String expression) {
-        this.type = type;
-        this.expression = expression;
-    }
 
     /**
      * Use SLQ92 to select message.
@@ -64,11 +40,4 @@ public class MessageSelector {
         return new MessageSelector(ExpressionType.TAG, tag);
     }
 
-    public String getExpressionType() {
-        return type;
-    }
-
-    public String getExpression() {
-        return expression;
-    }
 }
