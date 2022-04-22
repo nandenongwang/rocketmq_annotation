@@ -24,6 +24,7 @@ public class StatsSnapshot {
 
     /**
      * 时间段内统计项值每次调用平均值的增量【sum/times】
+     * 如果统计值为耗时、则该项为 总耗时/总调用次数 = 平均响应时间
      */
     private double avgpt;
 }
