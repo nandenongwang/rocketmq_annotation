@@ -25,7 +25,7 @@ public class StatsItem {
     private final AtomicLong times = new AtomicLong(0);
 
     /**
-     * 总统计状态名 如:TOPIC_AND_GROUP_CONSUME_OK_TPS 成功消费tps
+     * 统计指标名 如:TOPIC_AND_GROUP_CONSUME_OK_TPS 成功消费tps
      */
     @Getter
     private final String statsName;

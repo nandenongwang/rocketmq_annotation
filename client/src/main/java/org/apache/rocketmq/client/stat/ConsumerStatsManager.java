@@ -1,44 +1,50 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.rocketmq.client.stat;
 
-import java.util.concurrent.ScheduledExecutorService;
-
 import org.apache.rocketmq.client.log.ClientLogger;
-import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.common.protocol.body.ConsumeStatus;
 import org.apache.rocketmq.common.stats.StatsItemSet;
 import org.apache.rocketmq.common.stats.StatsSnapshot;
+import org.apache.rocketmq.logging.InternalLogger;
 
+import java.util.concurrent.ScheduledExecutorService;
+
+/**
+ * 消费者统计管理器
+ */
 public class ConsumerStatsManager {
     private static final InternalLogger log = ClientLogger.getLog();
 
+    //region 各统计指标
+    /**
+     * 消息成功消费tps
+     */
     private static final String TOPIC_AND_GROUP_CONSUME_OK_TPS = "CONSUME_OK_TPS";
-    private static final String TOPIC_AND_GROUP_CONSUME_FAILED_TPS = "CONSUME_FAILED_TPS";
-    private static final String TOPIC_AND_GROUP_CONSUME_RT = "CONSUME_RT";
-    private static final String TOPIC_AND_GROUP_PULL_TPS = "PULL_TPS";
-    private static final String TOPIC_AND_GROUP_PULL_RT = "PULL_RT";
-
     private final StatsItemSet topicAndGroupConsumeOKTPS;
-    private final StatsItemSet topicAndGroupConsumeRT;
+
+    /**
+     * 消息失败消费tps
+     */
+    private static final String TOPIC_AND_GROUP_CONSUME_FAILED_TPS = "CONSUME_FAILED_TPS";
     private final StatsItemSet topicAndGroupConsumeFailedTPS;
+
+    /**
+     * 消息消费平均耗时
+     */
+    private static final String TOPIC_AND_GROUP_CONSUME_RT = "CONSUME_RT";
+    private final StatsItemSet topicAndGroupConsumeRT;
+
+    /**
+     * 消息拉取tps
+     */
+    private static final String TOPIC_AND_GROUP_PULL_TPS = "PULL_TPS";
     private final StatsItemSet topicAndGroupPullTPS;
+
+    /**
+     * 消息拉取平均耗时
+     */
+    private static final String TOPIC_AND_GROUP_PULL_RT = "PULL_RT";
     private final StatsItemSet topicAndGroupPullRT;
+    //endregion
 
     public ConsumerStatsManager(final ScheduledExecutorService scheduledExecutorService) {
         this.topicAndGroupConsumeOKTPS = new StatsItemSet(TOPIC_AND_GROUP_CONSUME_OK_TPS, scheduledExecutorService, log);
@@ -52,12 +58,7 @@ public class ConsumerStatsManager {
         this.topicAndGroupPullRT = new StatsItemSet(TOPIC_AND_GROUP_PULL_RT, scheduledExecutorService, log);
     }
 
-    public void start() {
-    }
-
-    public void shutdown() {
-    }
-
+    //region 增加各类型采样值
     public void incPullRT(final String group, final String topic, final long rt) {
         this.topicAndGroupPullRT.addRTValue(topic + "@" + group, (int) rt, 1);
     }
@@ -77,12 +78,11 @@ public class ConsumerStatsManager {
     public void incConsumeFailedTPS(final String group, final String topic, final long msgs) {
         this.topicAndGroupConsumeFailedTPS.addValue(topic + "@" + group, (int) msgs, 1);
     }
+    //endregion
 
-
-
-
-
-
+    /**
+     * 聚合各指标分钟段统计快照得到消费者统计状态
+     */
     public ConsumeStatus consumeStatus(final String group, final String topic) {
         ConsumeStatus cs = new ConsumeStatus();
         {
@@ -130,14 +130,25 @@ public class ConsumerStatsManager {
         return cs;
     }
 
+    //region 获取各类型采样快照
+
+    /**
+     * 获取【拉取消息平均响应时间】指定topic@group统计单元的分钟段快照
+     */
     private StatsSnapshot getPullRT(final String group, final String topic) {
         return this.topicAndGroupPullRT.getStatsDataInMinute(topic + "@" + group);
     }
 
+    /**
+     * 获取【拉取消息tps】指定topic@group统计单元的分钟段快照
+     */
     private StatsSnapshot getPullTPS(final String group, final String topic) {
         return this.topicAndGroupPullTPS.getStatsDataInMinute(topic + "@" + group);
     }
 
+    /**
+     * 获取【消费消息平均响应时间】指定topic@group统计单元的分钟段快照 【最近一分钟消费消息数为0时获取小时段】
+     */
     private StatsSnapshot getConsumeRT(final String group, final String topic) {
         StatsSnapshot statsData = this.topicAndGroupConsumeRT.getStatsDataInMinute(topic + "@" + group);
         if (0 == statsData.getSum()) {
@@ -147,11 +158,25 @@ public class ConsumerStatsManager {
         return statsData;
     }
 
+    /**
+     * 获取【消息消费成功tps】指定topic@group统计单元的分钟段快照
+     */
     private StatsSnapshot getConsumeOKTPS(final String group, final String topic) {
         return this.topicAndGroupConsumeOKTPS.getStatsDataInMinute(topic + "@" + group);
     }
 
+    /**
+     * 获取【消息消费失败tps】指定topic@group统计单元的分钟段快照
+     */
     private StatsSnapshot getConsumeFailedTPS(final String group, final String topic) {
         return this.topicAndGroupConsumeFailedTPS.getStatsDataInMinute(topic + "@" + group);
     }
+    //endregion
+
+    public void start() {
+    }
+
+    public void shutdown() {
+    }
+
 }

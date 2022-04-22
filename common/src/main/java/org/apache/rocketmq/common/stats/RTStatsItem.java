@@ -5,7 +5,7 @@ import org.apache.rocketmq.logging.InternalLogger;
 import java.util.concurrent.ScheduledExecutorService;
 
 /**
- * 统计项值单位耗时时 avgpt表示平均响应时间
+ * 统计项值单位为耗时时 avgpt表示平均响应时间
  * A StatItem for response time, the only difference between from StatsItem is it has a different log output.
  */
 public class RTStatsItem extends StatsItem {
