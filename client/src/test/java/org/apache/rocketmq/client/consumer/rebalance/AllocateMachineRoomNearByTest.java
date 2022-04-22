@@ -105,7 +105,7 @@ public class AllocateMachineRoomNearByTest {
         }
         List<String> cidAll = prepareConsumer(IDCSize, consumerSize);
         List<MessageQueue> mqAll = prepareMQ(IDCSize, queueSize);
-        List<MessageQueue> resAll = new ArrayList<MessageQueue>();
+        List<MessageQueue> resAll = new ArrayList<>();
         for (String currentID : cidAll) {
             List<MessageQueue> res = allocateMessageQueueStrategy.allocate("Test-C-G",currentID,mqAll,cidAll);
             if (print) {

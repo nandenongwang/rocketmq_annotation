@@ -1,47 +1,40 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.client.consumer.rebalance;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+
+import lombok.Data;
 import org.apache.rocketmq.client.consumer.AllocateMessageQueueStrategy;
 import org.apache.rocketmq.common.message.MessageQueue;
 
+
 /**
- * Computer room Hashing queue algorithm, such as Alipay logic room
+ * 将指定broker组上的queue平均分配 【指定方式：brokername.splite[1]在consumeridcs配置中】
+ * 先将整除的分段 未整除的轮流分配
  */
+@Data
 public class AllocateMessageQueueByMachineRoom implements AllocateMessageQueueStrategy {
+
     private Set<String> consumeridcs;
 
     @Override
-    public List<MessageQueue> allocate(String consumerGroup, String currentCID, List<MessageQueue> mqAll,
-        List<String> cidAll) {
-        List<MessageQueue> result = new ArrayList<MessageQueue>();
+    public List<MessageQueue> allocate(String consumerGroup, String currentCID, List<MessageQueue> mqAll, List<String> cidAll) {
+        List<MessageQueue> result = new ArrayList<>();
+
+        //当前消费者下线 不分配
         int currentIndex = cidAll.indexOf(currentCID);
         if (currentIndex < 0) {
             return result;
         }
-        List<MessageQueue> premqAll = new ArrayList<MessageQueue>();
+
+        List<MessageQueue> premqAll = new ArrayList<>();
         for (MessageQueue mq : mqAll) {
             String[] temp = mq.getBrokerName().split("@");
             if (temp.length == 2 && consumeridcs.contains(temp[0])) {
                 premqAll.add(mq);
             }
+
         }
 
         int mod = premqAll.size() / cidAll.size();
@@ -60,13 +53,5 @@ public class AllocateMessageQueueByMachineRoom implements AllocateMessageQueueSt
     @Override
     public String getName() {
         return "MACHINE_ROOM";
-    }
-
-    public Set<String> getConsumeridcs() {
-        return consumeridcs;
-    }
-
-    public void setConsumeridcs(Set<String> consumeridcs) {
-        this.consumeridcs = consumeridcs;
     }
 }

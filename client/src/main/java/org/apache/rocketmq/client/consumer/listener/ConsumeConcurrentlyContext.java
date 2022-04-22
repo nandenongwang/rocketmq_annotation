@@ -1,58 +1,33 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.client.consumer.listener;
 
+import lombok.Data;
 import org.apache.rocketmq.common.message.MessageQueue;
 
 /**
- * Consumer concurrent consumption context
+ * 并发消费上下文
  */
+@Data
 public class ConsumeConcurrentlyContext {
     private final MessageQueue messageQueue;
     /**
+     * 默认0、由broker控制延时等级 一般为重试次数 + 3
+     * 也可由业务消费时手动设置上下文延时等级
      * Message consume retry strategy<br>
      * -1,no retry,put into DLQ directly<br>
      * 0,broker control retry frequency<br>
      * >0,client control retry frequency
      */
     private int delayLevelWhenNextConsume = 0;
+
+    /**
+     * 确认位置
+     * 一批消息中该位置前的消息会被当做成功之后的失败重试
+     * 但根据业务方消费返回值统计信息可能不准确 【如返回consume_later 并不会将该位置前消息数量计入成功统计中】
+     */
     private int ackIndex = Integer.MAX_VALUE;
 
     public ConsumeConcurrentlyContext(MessageQueue messageQueue) {
         this.messageQueue = messageQueue;
     }
 
-    public int getDelayLevelWhenNextConsume() {
-        return delayLevelWhenNextConsume;
-    }
-
-    public void setDelayLevelWhenNextConsume(int delayLevelWhenNextConsume) {
-        this.delayLevelWhenNextConsume = delayLevelWhenNextConsume;
-    }
-
-    public MessageQueue getMessageQueue() {
-        return messageQueue;
-    }
-
-    public int getAckIndex() {
-        return ackIndex;
-    }
-
-    public void setAckIndex(int ackIndex) {
-        this.ackIndex = ackIndex;
-    }
 }

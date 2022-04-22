@@ -13,7 +13,7 @@ public enum ReadOffsetType {
      */
     READ_FROM_STORE,
     /**
-     * 内存优先然后broker
+     * 内存优先然后持久化存储 本地文件或远程broker
      */
     MEMORY_FIRST_THEN_STORE;
 }

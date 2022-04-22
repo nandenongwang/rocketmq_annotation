@@ -1,19 +1,3 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.client.impl.consumer;
 
 import java.util.ArrayList;
@@ -50,6 +34,9 @@ import org.apache.rocketmq.common.utils.ThreadUtils;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 
+/**
+ * 并发消息消费服务
+ */
 public class ConsumeMessageConcurrentlyService implements ConsumeMessageService {
     private static final InternalLogger log = ClientLogger.getLog();
     private final DefaultMQPushConsumerImpl defaultMQPushConsumerImpl;
@@ -207,8 +194,8 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     }
 
     /**
-     * 将msgs分批封装成consumerequest提交consumeExecutor
-     * 每批大小 ConsumeMessageBatchMaxSize
+     * 将缓存消息分批封装成consumerequest提交consumeExecutor
+     * 每批大小 ConsumeMessageBatchMaxSize default：1
      */
     @Override
     public void submitConsumeRequest(List<MessageExt> msgs, ProcessQueue processQueue, MessageQueue messageQueue, boolean dispatchToConsume) {
@@ -246,7 +233,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     }
 
     /**
-     * 清理过期消息
+     * 清理每个处理queue中过期消息
      * 顺序消息不清理 必须顺序执行
      * 并发消息 批量加入延时队列延时执行
      */
@@ -267,6 +254,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             return;
         }
 
+        //region 更新消费者统计信息
         switch (status) {
             case CONSUME_SUCCESS:
                 if (ackIndex >= consumeRequest.getMsgs().size()) {
@@ -282,18 +270,23 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 this.getConsumerStatsManager().incConsumeFailedTPS(consumerGroup, consumeRequest.getMessageQueue().getTopic(), consumeRequest.getMsgs().size());
                 break;
             default:
+                //无
                 break;
         }
+        //endregion
 
         switch (this.defaultMQPushConsumer.getMessageModel()) {
             case BROADCASTING:
+                //region 集群模式下消费失败仅打印日志
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
                     log.warn("BROADCASTING, the message consume failed, drop it, {}", msg.toString());
                 }
+                //endregion
                 break;
             case CLUSTERING:
                 List<MessageExt> msgBackFailed = new ArrayList<>(consumeRequest.getMsgs().size());
+                //region 集群模式下依次发回消息到重试queue
                 for (int i = ackIndex + 1; i < consumeRequest.getMsgs().size(); i++) {
                     MessageExt msg = consumeRequest.getMsgs().get(i);
                     boolean result = this.sendMessageBack(msg, context);
@@ -302,18 +295,21 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                         msgBackFailed.add(msg);
                     }
                 }
+                //endregion
 
+                //region 发回失败的重新延时入队消费
                 if (!msgBackFailed.isEmpty()) {
                     consumeRequest.getMsgs().removeAll(msgBackFailed);
                     //将发回broker的失败的消息延时重新入队进行消费
                     //发回失败 -> 挂起到调度任务中 -> 提交offset成功 -> 消费者宕机 可能导致消息丢失？？？
                     this.submitConsumeRequestLater(msgBackFailed, consumeRequest.getProcessQueue(), consumeRequest.getMessageQueue());
                 }
+                //endregion
                 break;
             default:
                 break;
         }
-        //无论消费成功或失败提交offset 因为失败的已经发到延迟队列中等待重试了
+        //无论消费成功或失败均提交offset 【失败的已经发到延迟队列中等待重试】
         long offset = consumeRequest.getProcessQueue().removeMessage(consumeRequest.getMsgs());
         if (offset >= 0 && !consumeRequest.getProcessQueue().isDropped()) {
             this.defaultMQPushConsumerImpl.getOffsetStore().updateOffset(consumeRequest.getMessageQueue(), offset, true);
@@ -328,7 +324,7 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
     }
 
     /**
-     * 发回消息到延时&重试队列中
+     * 发回重试队列中 并设置延时
      */
     public boolean sendMessageBack(MessageExt msg, ConsumeConcurrentlyContext context) {
         int delayLevel = context.getDelayLevelWhenNextConsume();
@@ -379,12 +375,15 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 log.info("the message queue not be able to consume, because it's dropped. group={} {}", ConsumeMessageConcurrentlyService.this.consumerGroup, this.messageQueue);
                 return;
             }
-
+            //业务处理监听器
             MessageListenerConcurrently listener = ConsumeMessageConcurrentlyService.this.messageListener;
-            ConsumeConcurrentlyContext context = new ConsumeConcurrentlyContext(messageQueue);
-            ConsumeConcurrentlyStatus status = null;
+
+            //还原消息topic的namespace和retry前缀
             defaultMQPushConsumerImpl.resetRetryAndNamespace(msgs, defaultMQPushConsumer.getConsumerGroup());
 
+            //region 执行消费消息前置钩子
+            ConsumeConcurrentlyContext context = new ConsumeConcurrentlyContext(messageQueue);
+            ConsumeConcurrentlyStatus status = null;
             ConsumeMessageContext consumeMessageContext = null;
             if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
                 consumeMessageContext = new ConsumeMessageContext();
@@ -396,16 +395,22 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                 consumeMessageContext.setSuccess(false);
                 ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.executeHookBefore(consumeMessageContext);
             }
+            //endregion
 
             long beginTimestamp = System.currentTimeMillis();
+
+            //region 记录消息开始消费时间
+            if (!msgs.isEmpty()) {
+                for (MessageExt msg : msgs) {
+                    MessageAccessor.setConsumeStartTimeStamp(msg, String.valueOf(System.currentTimeMillis()));
+                }
+            }
+            //endregion
+
+            //region 调用listener进行业务处理
             boolean hasException = false;
             ConsumeReturnType returnType = ConsumeReturnType.SUCCESS;
             try {
-                if (!msgs.isEmpty()) {
-                    for (MessageExt msg : msgs) {
-                        MessageAccessor.setConsumeStartTimeStamp(msg, String.valueOf(System.currentTimeMillis()));
-                    }
-                }
                 status = listener.consumeMessage(Collections.unmodifiableList(msgs), context);
             } catch (Throwable e) {
                 log.warn("consumeMessage exception: {} Group: {} Msgs: {} MQ: {}",
@@ -415,7 +420,11 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                         messageQueue);
                 hasException = true;
             }
+            //endregion
+
             long consumeRT = System.currentTimeMillis() - beginTimestamp;
+
+            //region 根据处理状态和异常信息设置返回状态 【消息消费hook使用】
             if (null == status) {
                 if (hasException) {
                     returnType = ConsumeReturnType.EXCEPTION;
@@ -429,11 +438,9 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
             } else if (ConsumeConcurrentlyStatus.CONSUME_SUCCESS == status) {
                 returnType = ConsumeReturnType.SUCCESS;
             }
+            //endregion
 
-            if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
-                consumeMessageContext.getProps().put(MixAll.CONSUME_CONTEXT_TYPE, returnType.name());
-            }
-
+            //region 业务方未返回处理状态 【稍后重试】
             if (null == status) {
                 log.warn("consumeMessage return null, Group: {} Msgs: {} MQ: {}",
                         ConsumeMessageConcurrentlyService.this.consumerGroup,
@@ -441,14 +448,20 @@ public class ConsumeMessageConcurrentlyService implements ConsumeMessageService 
                         messageQueue);
                 status = ConsumeConcurrentlyStatus.RECONSUME_LATER;
             }
+            //endregion
 
+            //region 执行消息消费后置钩子
             if (ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.hasHook()) {
+                consumeMessageContext.getProps().put(MixAll.CONSUME_CONTEXT_TYPE, returnType.name());
                 consumeMessageContext.setStatus(status.toString());
                 consumeMessageContext.setSuccess(ConsumeConcurrentlyStatus.CONSUME_SUCCESS == status);
                 ConsumeMessageConcurrentlyService.this.defaultMQPushConsumerImpl.executeHookAfter(consumeMessageContext);
             }
+            //endregion
 
+            //region 更新消费者统计信息 【消费响应时间】
             ConsumeMessageConcurrentlyService.this.getConsumerStatsManager().incConsumeRT(ConsumeMessageConcurrentlyService.this.consumerGroup, messageQueue.getTopic(), consumeRT);
+            //endregion
 
             if (!processQueue.isDropped()) {
                 ConsumeMessageConcurrentlyService.this.processConsumeResult(status, context, this);
