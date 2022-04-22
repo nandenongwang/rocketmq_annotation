@@ -9,7 +9,7 @@ import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
 /**
- * offset存储服务
+ * offset管理器
  */
 public interface OffsetStore {
     /**
