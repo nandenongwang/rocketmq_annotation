@@ -1,99 +1,67 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.rocketmq.common.stats;
+
+import lombok.Getter;
+import org.apache.rocketmq.common.UtilAll;
+import org.apache.rocketmq.logging.InternalLogger;
 
 import java.util.LinkedList;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import org.apache.rocketmq.common.UtilAll;
-import org.apache.rocketmq.logging.InternalLogger;
-
 public class StatsItem {
-
-    private final AtomicLong value = new AtomicLong(0);
-
-    private final AtomicLong times = new AtomicLong(0);
-
-    private final LinkedList<CallSnapshot> csListMinute = new LinkedList<>();
-
-    private final LinkedList<CallSnapshot> csListHour = new LinkedList<>();
-
-    private final LinkedList<CallSnapshot> csListDay = new LinkedList<>();
-
-    private final String statsName;
-    private final String statsKey;
-    private final ScheduledExecutorService scheduledExecutorService;
     private final InternalLogger log;
 
-    public StatsItem(String statsName, String statsKey, ScheduledExecutorService scheduledExecutorService, InternalLogger log) {
-        this.statsName = statsName;
-        this.statsKey = statsKey;
-        this.scheduledExecutorService = scheduledExecutorService;
-        this.log = log;
-    }
+    /**
+     * 统计项递增值
+     */
+    @Getter
+    private final AtomicLong value = new AtomicLong(0);
 
-    private static StatsSnapshot computeStatsData(final LinkedList<CallSnapshot> csList) {
-        StatsSnapshot statsSnapshot = new StatsSnapshot();
-        synchronized (csList) {
-            double tps = 0;
-            double avgpt = 0;
-            long sum = 0;
-            long timesDiff = 0;
-            if (!csList.isEmpty()) {
-                CallSnapshot first = csList.getFirst();
-                CallSnapshot last = csList.getLast();
-                sum = last.getValue() - first.getValue();
-                tps = (sum * 1000.0d) / (last.getTimestamp() - first.getTimestamp());
+    /**
+     * 统计项递增调用次数
+     */
+    @Getter
+    private final AtomicLong times = new AtomicLong(0);
 
-                timesDiff = last.getTimes() - first.getTimes();
-                if (timesDiff > 0) {
-                    avgpt = (sum * 1.0d) / timesDiff;
-                }
-            }
+    /**
+     * 总统计状态名 如:TOPIC_AND_GROUP_CONSUME_OK_TPS 成功消费tps
+     */
+    @Getter
+    private final String statsName;
 
-            statsSnapshot.setSum(sum);
-            statsSnapshot.setTps(tps);
-            statsSnapshot.setAvgpt(avgpt);
-            statsSnapshot.setTimes(timesDiff);
-        }
+    /**
+     * 统计单元名称 如:topic@consumergroup
+     */
+    @Getter
+    private final String statsKey;
+    /**
+     * 每10s采样 限制6条数据
+     */
+    private final LinkedList<CallSnapshot> csListMinute = new LinkedList<>();
 
-        return statsSnapshot;
-    }
+    /**
+     * 每10min采样 限制6条数据
+     */
+    private final LinkedList<CallSnapshot> csListHour = new LinkedList<>();
 
-    public StatsSnapshot getStatsDataInMinute() {
-        return computeStatsData(this.csListMinute);
-    }
+    /**
+     * 每1h采样 限制24条数据
+     */
+    private final LinkedList<CallSnapshot> csListDay = new LinkedList<>();
 
-    public StatsSnapshot getStatsDataInHour() {
-        return computeStatsData(this.csListHour);
-    }
 
-    public StatsSnapshot getStatsDataInDay() {
-        return computeStatsData(this.csListDay);
-    }
+    /**
+     * 定时调度线程池
+     */
+    private final ScheduledExecutorService scheduledExecutorService;
 
+    /**
+     * 定时调度 【采样 & 打印日志】
+     */
     public void init() {
 
-        //采样 每10秒、10分、1小时采样记录 CallSnapshot，供合成每分、每小时、每天的状态快照 StatsSnapshot
+        //region 采样 每10秒、10分、1小时采样记录 CallSnapshot，供合成每分、每小时、每天的状态快照 StatsSnapshot
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -123,9 +91,9 @@ public class StatsItem {
                 }
             }
         }, 0, 1, TimeUnit.HOURS);
+        //endregion
 
-
-        //打印每分、每小时、每天的状态快照 StatsSnapshot
+        //region 打印每分、每小时、每天的状态快照 StatsSnapshot
         this.scheduledExecutorService.scheduleAtFixedRate(new Runnable() {
             @Override
             public void run() {
@@ -155,8 +123,70 @@ public class StatsItem {
                 }
             }
         }, Math.abs(UtilAll.computeNextMorningTimeMillis() - System.currentTimeMillis()) - 2000, 1000 * 60 * 60 * 24, TimeUnit.MILLISECONDS);
+        //endregion
     }
 
+    public StatsItem(String statsName, String statsKey, ScheduledExecutorService scheduledExecutorService, InternalLogger log) {
+        this.statsName = statsName;
+        this.statsKey = statsKey;
+        this.scheduledExecutorService = scheduledExecutorService;
+        this.log = log;
+    }
+
+    /**
+     * 根据调用快照集合计算不同时间段的统计快照 【csListMinute|csListHour|csListDay】
+     */
+    private static StatsSnapshot computeStatsData(final LinkedList<CallSnapshot> csList) {
+        StatsSnapshot statsSnapshot = new StatsSnapshot();
+        synchronized (csList) {
+            double tps = 0;
+            double avgpt = 0;
+            long sum = 0;
+            long timesDiff = 0;
+            if (!csList.isEmpty()) {
+                CallSnapshot first = csList.getFirst();
+                CallSnapshot last = csList.getLast();
+                sum = last.getValue() - first.getValue();
+                tps = (sum * 1000.0d) / (last.getTimestamp() - first.getTimestamp());
+
+                timesDiff = last.getTimes() - first.getTimes();
+                if (timesDiff > 0) {
+                    avgpt = (sum * 1.0d) / timesDiff;
+                }
+            }
+
+            statsSnapshot.setSum(sum);
+            statsSnapshot.setTps(tps);
+            statsSnapshot.setAvgpt(avgpt);
+            statsSnapshot.setTimes(timesDiff);
+        }
+
+        return statsSnapshot;
+    }
+
+    /**
+     * 计算一分钟内统计快照
+     */
+    public StatsSnapshot getStatsDataInMinute() {
+        return computeStatsData(this.csListMinute);
+    }
+
+    /**
+     * 计算一小时内统计快照
+     */
+    public StatsSnapshot getStatsDataInHour() {
+        return computeStatsData(this.csListHour);
+    }
+
+    /**
+     * 计算一天内统计快照
+     */
+    public StatsSnapshot getStatsDataInDay() {
+        return computeStatsData(this.csListDay);
+    }
+
+
+    //region 采样 【保存统计项的调用快照】
     public void samplingInSeconds() {
         synchronized (this.csListMinute) {
             if (this.csListMinute.size() == 0) {
@@ -174,8 +204,7 @@ public class StatsItem {
             if (this.csListHour.size() == 0) {
                 this.csListHour.add(new CallSnapshot(System.currentTimeMillis() - 10 * 60 * 1000, 0, 0));
             }
-            this.csListHour.add(new CallSnapshot(System.currentTimeMillis(), this.times.get(), this.value
-                    .get()));
+            this.csListHour.add(new CallSnapshot(System.currentTimeMillis(), this.times.get(), this.value.get()));
             if (this.csListHour.size() > 7) {
                 this.csListHour.removeFirst();
             }
@@ -187,14 +216,15 @@ public class StatsItem {
             if (this.csListDay.size() == 0) {
                 this.csListDay.add(new CallSnapshot(System.currentTimeMillis() - 60 * 60 * 1000, 0, 0));
             }
-            this.csListDay.add(new CallSnapshot(System.currentTimeMillis(), this.times.get(), this.value
-                    .get()));
+            this.csListDay.add(new CallSnapshot(System.currentTimeMillis(), this.times.get(), this.value.get()));
             if (this.csListDay.size() > 25) {
                 this.csListDay.removeFirst();
             }
         }
     }
+    //endregion
 
+    //region 打印 【日志输出各时间段的状态统计】
     public void printAtMinutes() {
         StatsSnapshot ss = computeStatsData(this.csListMinute);
         log.info(String.format("[%s] [%s] Stats In One Minute, ", this.statsName, this.statsKey) + statPrintDetail(ss));
@@ -217,28 +247,8 @@ public class StatsItem {
                 ss.getTps(),
                 ss.getAvgpt());
     }
+    //endregion
 
-    public AtomicLong getValue() {
-        return value;
-    }
 
-    public String getStatsKey() {
-        return statsKey;
-    }
-
-    public String getStatsName() {
-        return statsName;
-    }
-
-    public AtomicLong getTimes() {
-        return times;
-    }
 }
 
-@Data
-@AllArgsConstructor
-class CallSnapshot {
-    private long timestamp;
-    private long times;
-    private long value;
-}
