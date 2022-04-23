@@ -1,20 +1,23 @@
 package org.apache.rocketmq.client.consumer;
 
+/**
+ * 拉区消息响应状态
+ */
 public enum PullStatus {
     /**
-     * Founded
+     * 拉到新消息
      */
     FOUND,
     /**
-     * No new message can be pull
+     * 没有新消息
      */
     NO_NEW_MSG,
     /**
-     * Filtering results can not match
+     * 没有匹配的消息 【有新消息但不符合订阅过滤配置】
      */
     NO_MATCHED_MSG,
     /**
-     * Illegal offset,may be too big or too small
+     * 拉取消息开始offset非法 【过大或过小】
      */
     OFFSET_ILLEGAL
 }
