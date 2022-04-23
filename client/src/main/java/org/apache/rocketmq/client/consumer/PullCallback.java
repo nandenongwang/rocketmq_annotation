@@ -1,7 +1,7 @@
 package org.apache.rocketmq.client.consumer;
 
 /**
- * Async message pulling interface
+ * 拉取消息回调
  */
 public interface PullCallback {
     void onSuccess(final PullResult pullResult);

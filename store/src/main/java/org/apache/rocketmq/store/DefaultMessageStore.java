@@ -724,6 +724,7 @@ public class DefaultMessageStore implements MessageStore {
                             SelectMappedBufferResult selectResult = this.commitLog.getMessage(offsetPy, sizePy);
                             if (null == selectResult) {
                                 //找不到该offset 说明上一个commitlog已读到末尾 本次offset所在commitlog丢失【或消费过慢的consumer到拉取过慢的salve读取消息】
+                                //读取的消息过久已被删除
                                 if (getResult.getBufferTotalSize() == 0) {
                                     status = GetMessageStatus.MESSAGE_WAS_REMOVING;
                                 }

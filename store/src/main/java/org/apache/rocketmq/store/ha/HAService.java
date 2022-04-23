@@ -1,38 +1,6 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.store.ha;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.ClosedChannelException;
-import java.nio.channels.SelectionKey;
-import java.nio.channels.Selector;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.channels.SocketChannel;
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicReference;
-
+import lombok.Getter;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
@@ -42,18 +10,35 @@ import org.apache.rocketmq.store.CommitLog;
 import org.apache.rocketmq.store.DefaultMessageStore;
 import org.apache.rocketmq.store.PutMessageStatus;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.util.ArrayList;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicReference;
+
+/**
+ * 主从HA服务
+ */
 public class HAService {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-
+    @Getter
     private final AtomicInteger connectionCount = new AtomicInteger(0);
 
     private final List<HAConnection> connectionList = new LinkedList<>();
 
     private final AcceptSocketService acceptSocketService;
-
+    @Getter
     private final DefaultMessageStore defaultMessageStore;
-
+    @Getter
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
+    @Getter
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
     private final GroupTransferService groupTransferService;
@@ -62,28 +47,39 @@ public class HAService {
 
     public HAService(final DefaultMessageStore defaultMessageStore) throws IOException {
         this.defaultMessageStore = defaultMessageStore;
-        this.acceptSocketService =
-                new AcceptSocketService(defaultMessageStore.getMessageStoreConfig().getHaListenPort());
+        this.acceptSocketService = new AcceptSocketService(defaultMessageStore.getMessageStoreConfig().getHaListenPort());
         this.groupTransferService = new GroupTransferService();
         this.haClient = new HAClient();
     }
 
+    /**
+     *
+     */
     public void updateMasterAddress(final String newAddr) {
         if (this.haClient != null) {
             this.haClient.updateMasterAddress(newAddr);
         }
     }
 
+    /**
+     *
+     */
     public void putRequest(final CommitLog.GroupCommitRequest request) {
         this.groupTransferService.putRequest(request);
     }
 
+    /**
+     *
+     */
     public boolean isSlaveOK(final long masterPutWhere) {
         boolean result = this.connectionCount.get() > 0;
         result = result && ((masterPutWhere - this.push2SlaveMaxOffset.get()) < this.defaultMessageStore.getMessageStoreConfig().getHaSlaveFallbehindMax());
         return result;
     }
 
+    /**
+     *
+     */
     public void notifyTransferSome(final long offset) {
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
             boolean ok = this.push2SlaveMaxOffset.compareAndSet(value, offset);
@@ -96,14 +92,13 @@ public class HAService {
         }
     }
 
-    public AtomicInteger getConnectionCount() {
-        return connectionCount;
-    }
-
     // public void notifyTransferSome() {
     // this.groupTransferService.notifyTransferSome();
     // }
 
+    /**
+     *
+     */
     public void start() throws Exception {
         this.acceptSocketService.beginAccept();
         this.acceptSocketService.start();
@@ -111,18 +106,27 @@ public class HAService {
         this.haClient.start();
     }
 
+    /**
+     * 管理该slave连接
+     */
     public void addConnection(final HAConnection conn) {
         synchronized (this.connectionList) {
             this.connectionList.add(conn);
         }
     }
 
+    /**
+     * 移除指定slave连接
+     */
     public void removeConnection(final HAConnection conn) {
         synchronized (this.connectionList) {
             this.connectionList.remove(conn);
         }
     }
 
+    /**
+     *
+     */
     public void shutdown() {
         this.haClient.shutdown();
         this.acceptSocketService.shutdown(true);
@@ -130,6 +134,9 @@ public class HAService {
         this.groupTransferService.shutdown();
     }
 
+    /**
+     * 销毁所有slave的连接
+     */
     public void destroyConnections() {
         synchronized (this.connectionList) {
             for (HAConnection c : this.connectionList) {
@@ -140,20 +147,8 @@ public class HAService {
         }
     }
 
-    public DefaultMessageStore getDefaultMessageStore() {
-        return defaultMessageStore;
-    }
-
-    public WaitNotifyObject getWaitNotifyObject() {
-        return waitNotifyObject;
-    }
-
-    public AtomicLong getPush2SlaveMaxOffset() {
-        return push2SlaveMaxOffset;
-    }
-
     /**
-     * Listens to slave connections to create {@link HAConnection}.
+     * nio方式监听来自slave的tcp连接 并包装成HAConnection管理该连接
      */
     class AcceptSocketService extends ServiceThread {
         private final SocketAddress socketAddressListen;
@@ -164,11 +159,6 @@ public class HAService {
             this.socketAddressListen = new InetSocketAddress(port);
         }
 
-        /**
-         * Starts listening to slave connections.
-         *
-         * @throws Exception If fails.
-         */
         public void beginAccept() throws Exception {
             this.serverSocketChannel = ServerSocketChannel.open();
             this.selector = RemotingUtil.openSelector();
@@ -178,23 +168,6 @@ public class HAService {
             this.serverSocketChannel.register(this.selector, SelectionKey.OP_ACCEPT);
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void shutdown(final boolean interrupt) {
-            super.shutdown(interrupt);
-            try {
-                this.serverSocketChannel.close();
-                this.selector.close();
-            } catch (IOException e) {
-                log.error("AcceptSocketService shutdown exception", e);
-            }
-        }
-
-        /**
-         * {@inheritDoc}
-         */
         @Override
         public void run() {
             log.info(this.getServiceName() + " service started");
@@ -241,13 +214,27 @@ public class HAService {
          * {@inheritDoc}
          */
         @Override
+        public void shutdown(final boolean interrupt) {
+            super.shutdown(interrupt);
+            try {
+                this.serverSocketChannel.close();
+                this.selector.close();
+            } catch (IOException e) {
+                log.error("AcceptSocketService shutdown exception", e);
+            }
+        }
+
+        /**
+         * {@inheritDoc}
+         */
+        @Override
         public String getServiceName() {
             return AcceptSocketService.class.getSimpleName();
         }
     }
 
     /**
-     * GroupTransferService Service
+     *
      */
     class GroupTransferService extends ServiceThread {
 
@@ -260,6 +247,21 @@ public class HAService {
                 this.requestsWrite.add(request);
             }
             this.wakeup();
+        }
+
+        public void run() {
+            log.info(this.getServiceName() + " service started");
+
+            while (!this.isStopped()) {
+                try {
+                    this.waitForRunning(10);
+                    this.doWaitTransfer();
+                } catch (Exception e) {
+                    log.warn(this.getServiceName() + " service has exception. ", e);
+                }
+            }
+
+            log.info(this.getServiceName() + " service end");
         }
 
         public void notifyTransferSome() {
@@ -296,21 +298,6 @@ public class HAService {
             }
         }
 
-        public void run() {
-            log.info(this.getServiceName() + " service started");
-
-            while (!this.isStopped()) {
-                try {
-                    this.waitForRunning(10);
-                    this.doWaitTransfer();
-                } catch (Exception e) {
-                    log.warn(this.getServiceName() + " service has exception. ", e);
-                }
-            }
-
-            log.info(this.getServiceName() + " service end");
-        }
-
         @Override
         protected void onWaitEnd() {
             this.swapRequests();
@@ -322,12 +309,15 @@ public class HAService {
         }
     }
 
+    /**
+     *
+     */
     class HAClient extends ServiceThread {
         private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
         private final AtomicReference<String> masterAddress = new AtomicReference<>();
         private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
         private SocketChannel socketChannel;
-        private Selector selector;
+        private final Selector selector;
         private long lastWriteTimestamp = System.currentTimeMillis();
 
         private long currentReportedOffset = 0;
@@ -337,6 +327,53 @@ public class HAService {
 
         public HAClient() throws IOException {
             this.selector = RemotingUtil.openSelector();
+        }
+        @Override
+        public void run() {
+            log.info(this.getServiceName() + " service started");
+
+            while (!this.isStopped()) {
+                try {
+                    if (this.connectMaster()) {
+
+                        if (this.isTimeToReportOffset()) {
+                            boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
+                            if (!result) {
+                                this.closeMaster();
+                            }
+                        }
+
+                        this.selector.select(1000);
+
+                        boolean ok = this.processReadEvent();
+                        if (!ok) {
+                            this.closeMaster();
+                        }
+
+                        if (!reportSlaveMaxOffsetPlus()) {
+                            continue;
+                        }
+
+                        long interval =
+                                HAService.this.getDefaultMessageStore().getSystemClock().now()
+                                        - this.lastWriteTimestamp;
+                        if (interval > HAService.this.getDefaultMessageStore().getMessageStoreConfig()
+                                .getHaHousekeepingInterval()) {
+                            log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress
+                                    + "] expired, " + interval);
+                            this.closeMaster();
+                            log.warn("HAClient, master not response some time, so close connection");
+                        }
+                    } else {
+                        this.waitForRunning(1000 * 5);
+                    }
+                } catch (Exception e) {
+                    log.warn(this.getServiceName() + " service has exception. ", e);
+                    this.waitForRunning(1000 * 5);
+                }
+            }
+
+            log.info(this.getServiceName() + " service end");
         }
 
         public void updateMasterAddress(final String newAddr) {
@@ -541,53 +578,7 @@ public class HAService {
             }
         }
 
-        @Override
-        public void run() {
-            log.info(this.getServiceName() + " service started");
 
-            while (!this.isStopped()) {
-                try {
-                    if (this.connectMaster()) {
-
-                        if (this.isTimeToReportOffset()) {
-                            boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
-                            if (!result) {
-                                this.closeMaster();
-                            }
-                        }
-
-                        this.selector.select(1000);
-
-                        boolean ok = this.processReadEvent();
-                        if (!ok) {
-                            this.closeMaster();
-                        }
-
-                        if (!reportSlaveMaxOffsetPlus()) {
-                            continue;
-                        }
-
-                        long interval =
-                                HAService.this.getDefaultMessageStore().getSystemClock().now()
-                                        - this.lastWriteTimestamp;
-                        if (interval > HAService.this.getDefaultMessageStore().getMessageStoreConfig()
-                                .getHaHousekeepingInterval()) {
-                            log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress
-                                    + "] expired, " + interval);
-                            this.closeMaster();
-                            log.warn("HAClient, master not response some time, so close connection");
-                        }
-                    } else {
-                        this.waitForRunning(1000 * 5);
-                    }
-                } catch (Exception e) {
-                    log.warn(this.getServiceName() + " service has exception. ", e);
-                    this.waitForRunning(1000 * 5);
-                }
-            }
-
-            log.info(this.getServiceName() + " service end");
-        }
         // private void disableWriteFlag() {
         // if (this.socketChannel != null) {
         // SelectionKey sk = this.socketChannel.keyFor(this.selector);
