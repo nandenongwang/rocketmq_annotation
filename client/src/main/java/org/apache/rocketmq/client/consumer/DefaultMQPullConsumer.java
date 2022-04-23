@@ -1,7 +1,7 @@
 package org.apache.rocketmq.client.consumer;
 
-import java.util.HashSet;
-import java.util.Set;
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.consumer.rebalance.AllocateMessageQueueAveragely;
@@ -18,60 +18,91 @@ import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.remoting.RPCHook;
 import org.apache.rocketmq.remoting.exception.RemotingException;
 
+import java.util.HashSet;
+import java.util.Set;
+
 /**
- * Default pulling consumer.
- * This class will be removed in 2022, and a better implementation {@link DefaultLitePullConsumer} is recommend to use
- * in the scenario of actively pulling messages.
+ * 拉模式消费者
+ * 主要功能转发至DefaultMQPullConsumerImpl实现
+ * 提供了pull消费者特殊配置参数 & 限制了对业务端功能接口的暴露
  */
 @Deprecated
 public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsumer {
-
+    @Getter
     protected final transient DefaultMQPullConsumerImpl defaultMQPullConsumerImpl;
 
     /**
-     * Do the same thing for the same Group, the application must be set,and guarantee Globally unique
+     * 消费组
      */
+    @Getter
+    @Setter
     private String consumerGroup;
+
     /**
-     * Long polling mode, the Consumer connection max suspend time, it is not recommended to modify
+     * 长轮询下broker端最大挂起时间
      */
+    @Getter
+    @Setter
     private long brokerSuspendMaxTimeMillis = 1000 * 20;
+
     /**
-     * Long polling mode, the Consumer connection timeout(must greater than brokerSuspendMaxTimeMillis), it is not
-     * recommended to modify
+     * 长轮询下consumer端挂起等待的超时时间 【必定要大于broker端挂起时间】
      */
+    @Getter
+    @Setter
     private long consumerTimeoutMillisWhenSuspend = 1000 * 30;
+
     /**
-     * The socket timeout in milliseconds
+     * 一次pull请求从建立连接到等待响应的最大时间 【关闭长轮询时】
      */
+    @Getter
+    @Setter
     private long consumerPullTimeoutMillis = 1000 * 10;
+
     /**
-     * Consumption pattern,default is clustering
+     * 消费模式 集群或广播
      */
+    @Getter
+    @Setter
     private MessageModel messageModel = MessageModel.CLUSTERING;
+
     /**
-     * Message queue listener
+     * consumequeue分配变更监听器
      */
+    @Getter
+    @Setter
     private MessageQueueListener messageQueueListener;
+
     /**
-     * Offset Storage
+     * 进度管理器
      */
+    @Getter
+    @Setter
     private OffsetStore offsetStore;
+
     /**
      * Topic set you want to register
      */
-    private Set<String> registerTopics = new HashSet<String>();
+    @Getter
+    @Setter
+    private Set<String> registerTopics = new HashSet<>();
+
     /**
-     * Queue allocation algorithm
+     * consumequeue分配策略
      */
+    @Getter
+    @Setter
     private AllocateMessageQueueStrategy allocateMessageQueueStrategy = new AllocateMessageQueueAveragely();
-    /**
-     * Whether the unit of subscription group
-     */
+
+    @Getter
+    @Setter
     private boolean unitMode = false;
 
+    @Getter
+    @Setter
     private int maxReconsumeTimes = 16;
 
+    //region 各种构造函数 设置defaultMQPullConsumerImpl 【同时配置namespace、groupname、rpchook等】
     public DefaultMQPullConsumer() {
         this(null, MixAll.DEFAULT_CONSUMER_GROUP, null);
     }
@@ -91,38 +122,32 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
     public DefaultMQPullConsumer(final String namespace, final String consumerGroup) {
         this(namespace, consumerGroup, null);
     }
-    /**
-     * Constructor specifying namespace, consumer group and RPC hook.
-     *
-     * @param consumerGroup Consumer group.
-     * @param rpcHook RPC hook to execute before each remoting command.
-     */
+
     public DefaultMQPullConsumer(final String namespace, final String consumerGroup, RPCHook rpcHook) {
         this.namespace = namespace;
         this.consumerGroup = consumerGroup;
         defaultMQPullConsumerImpl = new DefaultMQPullConsumerImpl(this, rpcHook);
     }
+    //endregion
 
-    /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
-     */
+    //region 创建topic
     @Deprecated
     @Override
     public void createTopic(String key, String newTopic, int queueNum) throws MQClientException {
         createTopic(key, withNamespace(newTopic), queueNum, 0);
     }
 
-    /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
-     */
     @Deprecated
     @Override
     public void createTopic(String key, String newTopic, int queueNum, int topicSysFlag) throws MQClientException {
         this.defaultMQPullConsumerImpl.createTopic(key, withNamespace(newTopic), queueNum, topicSysFlag);
     }
+    //endregion
+
+    //region offset相关
 
     /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
+     * 搜索consumequeue指定时间戳存储的消息
      */
     @Deprecated
     @Override
@@ -131,7 +156,7 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
     }
 
     /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
+     * 搜索consumequeue最大的offset
      */
     @Deprecated
     @Override
@@ -140,7 +165,7 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
     }
 
     /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
+     * 搜索consumequeue最小的offset
      */
     @Deprecated
     @Override
@@ -149,12 +174,24 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
     }
 
     /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
+     * 查询consumequeue最早的消息存储时间
      */
     @Deprecated
     @Override
     public long earliestMsgStoreTime(MessageQueue mq) throws MQClientException {
         return this.defaultMQPullConsumerImpl.earliestMsgStoreTime(queueWithNamespace(mq));
+    }
+    //endregion
+
+    //region 查询消息相关
+    @Override
+    public MessageExt viewMessage(String topic, String uniqKey) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        try {
+            MessageDecoder.decodeMessageId(uniqKey);
+            return this.viewMessage(uniqKey);
+        } catch (Exception ignored) {
+        }
+        return this.defaultMQPullConsumerImpl.queryMessageByUniqKey(withNamespace(topic), uniqKey);
     }
 
     /**
@@ -163,7 +200,7 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
     @Deprecated
     @Override
     public MessageExt viewMessage(String offsetMsgId) throws RemotingException, MQBrokerException,
-        InterruptedException, MQClientException {
+            InterruptedException, MQClientException {
         return this.defaultMQPullConsumerImpl.viewMessage(offsetMsgId);
     }
 
@@ -173,118 +210,71 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
     @Deprecated
     @Override
     public QueryResult queryMessage(String topic, String key, int maxNum, long begin, long end)
-        throws MQClientException, InterruptedException {
+            throws MQClientException, InterruptedException {
         return this.defaultMQPullConsumerImpl.queryMessage(withNamespace(topic), key, maxNum, begin, end);
     }
 
-    public AllocateMessageQueueStrategy getAllocateMessageQueueStrategy() {
-        return allocateMessageQueueStrategy;
-    }
+    //endregion
 
-    public void setAllocateMessageQueueStrategy(AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
-        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;
-    }
-
-    public long getBrokerSuspendMaxTimeMillis() {
-        return brokerSuspendMaxTimeMillis;
-    }
 
     /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
-     */
-    @Deprecated
-    public void setBrokerSuspendMaxTimeMillis(long brokerSuspendMaxTimeMillis) {
-        this.brokerSuspendMaxTimeMillis = brokerSuspendMaxTimeMillis;
-    }
-
-    public String getConsumerGroup() {
-        return consumerGroup;
-    }
-
-    public void setConsumerGroup(String consumerGroup) {
-        this.consumerGroup = consumerGroup;
-    }
-
-    public long getConsumerPullTimeoutMillis() {
-        return consumerPullTimeoutMillis;
-    }
-
-    public void setConsumerPullTimeoutMillis(long consumerPullTimeoutMillis) {
-        this.consumerPullTimeoutMillis = consumerPullTimeoutMillis;
-    }
-
-    public long getConsumerTimeoutMillisWhenSuspend() {
-        return consumerTimeoutMillisWhenSuspend;
-    }
-
-    public void setConsumerTimeoutMillisWhenSuspend(long consumerTimeoutMillisWhenSuspend) {
-        this.consumerTimeoutMillisWhenSuspend = consumerTimeoutMillisWhenSuspend;
-    }
-
-    public MessageModel getMessageModel() {
-        return messageModel;
-    }
-
-    public void setMessageModel(MessageModel messageModel) {
-        this.messageModel = messageModel;
-    }
-
-    public MessageQueueListener getMessageQueueListener() {
-        return messageQueueListener;
-    }
-
-    public void setMessageQueueListener(MessageQueueListener messageQueueListener) {
-        this.messageQueueListener = messageQueueListener;
-    }
-
-    public Set<String> getRegisterTopics() {
-        return registerTopics;
-    }
-
-    public void setRegisterTopics(Set<String> registerTopics) {
-        this.registerTopics = withNamespace(registerTopics);
-    }
-
-    /**
-     * This method will be removed or it's visibility will be changed in a certain version after April 5, 2020, so
-     * please do not use this method.
+     * 送回消费 【通常用于消费失败消息】
      */
     @Deprecated
     @Override
-    public void sendMessageBack(MessageExt msg, int delayLevel)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+    public void sendMessageBack(MessageExt msg, int delayLevel) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         msg.setTopic(withNamespace(msg.getTopic()));
         this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, null);
     }
 
     /**
-     * This method will be removed or it's visibility will be changed in a certain version after April 5, 2020, so
-     * please do not use this method.
+     * 送回消费 【通常用于消费失败消息】
      */
     @Deprecated
     @Override
-    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
         msg.setTopic(withNamespace(msg.getTopic()));
         this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName);
     }
 
+    /**
+     * 送回消费 【通常用于消费失败消息】
+     */
+    @Override
+    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName, String consumerGroup)
+            throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
+        msg.setTopic(withNamespace(msg.getTopic()));
+        this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName, consumerGroup);
+    }
+
+    /**
+     * 获取topic所有consumequeue
+     */
     @Override
     public Set<MessageQueue> fetchSubscribeMessageQueues(String topic) throws MQClientException {
         return this.defaultMQPullConsumerImpl.fetchSubscribeMessageQueues(withNamespace(topic));
     }
 
+    /**
+     * 启动defaultMQPullConsumerImpl
+     */
     @Override
     public void start() throws MQClientException {
         this.setConsumerGroup(NamespaceUtil.wrapNamespace(this.getNamespace(), this.consumerGroup));
         this.defaultMQPullConsumerImpl.start();
     }
 
+    /**
+     * 关闭 defaultMQPullConsumerImpl
+     */
     @Override
     public void shutdown() {
         this.defaultMQPullConsumerImpl.shutdown();
     }
 
+    /**
+     * 注册consumequeue监听器
+     */
     @Override
     public void registerMessageQueueListener(String topic, MessageQueueListener listener) {
         synchronized (this.registerTopics) {
@@ -295,141 +285,82 @@ public class DefaultMQPullConsumer extends ClientConfig implements MQPullConsume
         }
     }
 
+    //region 拉取消息 【同步异步、普通长轮询】
+
     @Override
-    public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), subExpression, offset, maxNums);
     }
 
     @Override
-    public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums, long timeout)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public PullResult pull(MessageQueue mq, String subExpression, long offset, int maxNums, long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), subExpression, offset, maxNums, timeout);
     }
 
     @Override
-    public PullResult pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public PullResult pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), messageSelector, offset, maxNums);
     }
 
     @Override
-    public PullResult pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums, long timeout)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public PullResult pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums, long timeout) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), messageSelector, offset, maxNums, timeout);
     }
 
     @Override
-    public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback)
-        throws MQClientException, RemotingException, InterruptedException {
+    public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback) throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), subExpression, offset, maxNums, pullCallback);
     }
 
     @Override
-    public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback,
-        long timeout)
-        throws MQClientException, RemotingException, InterruptedException {
+    public void pull(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback, long timeout) throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), subExpression, offset, maxNums, pullCallback, timeout);
     }
 
     @Override
-    public void pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums,
-        PullCallback pullCallback)
-        throws MQClientException, RemotingException, InterruptedException {
+    public void pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums, PullCallback pullCallback) throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), messageSelector, offset, maxNums, pullCallback);
     }
 
     @Override
-    public void pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums,
-        PullCallback pullCallback, long timeout)
-        throws MQClientException, RemotingException, InterruptedException {
+    public void pull(MessageQueue mq, MessageSelector messageSelector, long offset, int maxNums, PullCallback pullCallback, long timeout) throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pull(queueWithNamespace(mq), messageSelector, offset, maxNums, pullCallback, timeout);
     }
 
     @Override
-    public PullResult pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums)
-        throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
+    public PullResult pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums) throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.defaultMQPullConsumerImpl.pullBlockIfNotFound(queueWithNamespace(mq), subExpression, offset, maxNums);
     }
 
     @Override
-    public void pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums,
-        PullCallback pullCallback)
-        throws MQClientException, RemotingException, InterruptedException {
+    public void pullBlockIfNotFound(MessageQueue mq, String subExpression, long offset, int maxNums, PullCallback pullCallback) throws MQClientException, RemotingException, InterruptedException {
         this.defaultMQPullConsumerImpl.pullBlockIfNotFound(queueWithNamespace(mq), subExpression, offset, maxNums, pullCallback);
     }
+    //endregion
 
+    /**
+     * 业务方手动更新consumequeue消费进度
+     */
     @Override
     public void updateConsumeOffset(MessageQueue mq, long offset) throws MQClientException {
         this.defaultMQPullConsumerImpl.updateConsumeOffset(queueWithNamespace(mq), offset);
     }
 
+    /**
+     * 抓取consumequeue消费进度 【fromStore是否存储优先】
+     */
     @Override
     public long fetchConsumeOffset(MessageQueue mq, boolean fromStore) throws MQClientException {
         return this.defaultMQPullConsumerImpl.fetchConsumeOffset(queueWithNamespace(mq), fromStore);
     }
 
+    /**
+     * 获取分配到消费的consumequeue
+     */
     @Override
     public Set<MessageQueue> fetchMessageQueuesInBalance(String topic) throws MQClientException {
         return this.defaultMQPullConsumerImpl.fetchMessageQueuesInBalance(withNamespace(topic));
     }
 
-    @Override
-    public MessageExt viewMessage(String topic,
-        String uniqKey) throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-        try {
-            MessageDecoder.decodeMessageId(uniqKey);
-            return this.viewMessage(uniqKey);
-        } catch (Exception e) {
-            // Ignore
-        }
-        return this.defaultMQPullConsumerImpl.queryMessageByUniqKey(withNamespace(topic), uniqKey);
-    }
 
-    @Override
-    public void sendMessageBack(MessageExt msg, int delayLevel, String brokerName, String consumerGroup)
-        throws RemotingException, MQBrokerException, InterruptedException, MQClientException {
-        msg.setTopic(withNamespace(msg.getTopic()));
-        this.defaultMQPullConsumerImpl.sendMessageBack(msg, delayLevel, brokerName, consumerGroup);
-    }
-
-    /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
-     */
-    @Deprecated
-    public OffsetStore getOffsetStore() {
-        return offsetStore;
-    }
-
-    /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
-     */
-    @Deprecated
-    public void setOffsetStore(OffsetStore offsetStore) {
-        this.offsetStore = offsetStore;
-    }
-
-    /**
-     * This method will be removed in a certain version after April 5, 2020, so please do not use this method.
-     */
-    @Deprecated
-    public DefaultMQPullConsumerImpl getDefaultMQPullConsumerImpl() {
-        return defaultMQPullConsumerImpl;
-    }
-
-    public boolean isUnitMode() {
-        return unitMode;
-    }
-
-    public void setUnitMode(boolean isUnitMode) {
-        this.unitMode = isUnitMode;
-    }
-
-    public int getMaxReconsumeTimes() {
-        return maxReconsumeTimes;
-    }
-
-    public void setMaxReconsumeTimes(final int maxReconsumeTimes) {
-        this.maxReconsumeTimes = maxReconsumeTimes;
-    }
 }
