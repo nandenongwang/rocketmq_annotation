@@ -28,21 +28,40 @@ import java.util.concurrent.atomic.AtomicReference;
  */
 public class HAService {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
+
+    /**
+     * 连接的slave数
+     */
     @Getter
     private final AtomicInteger connectionCount = new AtomicInteger(0);
 
+    /**
+     * 所有slave连接
+     */
     private final List<HAConnection> connectionList = new LinkedList<>();
 
+    /**
+     * slave连接接收服务
+     */
     private final AcceptSocketService acceptSocketService;
+
+    /**
+     * 消息存储服务
+     */
     @Getter
     private final DefaultMessageStore defaultMessageStore;
+
     @Getter
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
+
     @Getter
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
     private final GroupTransferService groupTransferService;
 
+    /**
+     * slave同步&心跳汇报服务
+     */
     private final HAClient haClient;
 
     public HAService(final DefaultMessageStore defaultMessageStore) throws IOException {
@@ -53,7 +72,7 @@ public class HAService {
     }
 
     /**
-     *
+     * slave更新连接master地址
      */
     public void updateMasterAddress(final String newAddr) {
         if (this.haClient != null) {
@@ -62,7 +81,7 @@ public class HAService {
     }
 
     /**
-     *
+     * 提交日志组传输请求
      */
     public void putRequest(final CommitLog.GroupCommitRequest request) {
         this.groupTransferService.putRequest(request);
@@ -97,13 +116,25 @@ public class HAService {
     // }
 
     /**
-     *
+     * 启动master等待slave连接线程
+     * 启动salve接收同步日志线程
+     * 启动
      */
     public void start() throws Exception {
         this.acceptSocketService.beginAccept();
         this.acceptSocketService.start();
         this.groupTransferService.start();
         this.haClient.start();
+    }
+
+    /**
+     *
+     */
+    public void shutdown() {
+        this.haClient.shutdown();
+        this.acceptSocketService.shutdown(true);
+        this.destroyConnections();
+        this.groupTransferService.shutdown();
     }
 
     /**
@@ -122,16 +153,6 @@ public class HAService {
         synchronized (this.connectionList) {
             this.connectionList.remove(conn);
         }
-    }
-
-    /**
-     *
-     */
-    public void shutdown() {
-        this.haClient.shutdown();
-        this.acceptSocketService.shutdown(true);
-        this.destroyConnections();
-        this.groupTransferService.shutdown();
     }
 
     /**
@@ -279,8 +300,7 @@ public class HAService {
                 if (!this.requestsRead.isEmpty()) {
                     for (CommitLog.GroupCommitRequest req : this.requestsRead) {
                         boolean transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
-                        long waitUntilWhen = HAService.this.defaultMessageStore.getSystemClock().now()
-                                + HAService.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout();
+                        long waitUntilWhen = HAService.this.defaultMessageStore.getSystemClock().now() + HAService.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout();
                         while (!transferOK && HAService.this.defaultMessageStore.getSystemClock().now() < waitUntilWhen) {
                             this.notifyTransferObject.waitForRunning(1000);
                             transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
