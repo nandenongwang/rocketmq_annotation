@@ -310,24 +310,49 @@ public class HAService {
     }
 
     /**
-     *
+     * slave接收master同步commitlog服务
      */
     class HAClient extends ServiceThread {
-        private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
-        private final AtomicReference<String> masterAddress = new AtomicReference<>();
-        private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
+
         private SocketChannel socketChannel;
         private final Selector selector;
         private long lastWriteTimestamp = System.currentTimeMillis();
 
+        /**
+         * 读缓存大小
+         */
+        private static final int READ_MAX_BUFFER_SIZE = 1024 * 1024 * 4;
+
+        /**
+         * master地址
+         */
+        private final AtomicReference<String> masterAddress = new AtomicReference<>();
+
+        /**
+         * 报告数据 【maxOffset】
+         */
+        private final ByteBuffer reportOffset = ByteBuffer.allocate(8);
+
+        /**
+         * 准备向master汇报的同步进度 【slave已经同步的maxOffset】
+         */
         private long currentReportedOffset = 0;
+
+        /**
+         * 上次读完整条消息的位置
+         */
         private int dispatchPosition = 0;
+
+        /**
+         * 读取缓存 默认4m
+         */
         private ByteBuffer byteBufferRead = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
         private ByteBuffer byteBufferBackup = ByteBuffer.allocate(READ_MAX_BUFFER_SIZE);
 
         public HAClient() throws IOException {
             this.selector = RemotingUtil.openSelector();
         }
+
         @Override
         public void run() {
             log.info(this.getServiceName() + " service started");
@@ -335,13 +360,14 @@ public class HAService {
             while (!this.isStopped()) {
                 try {
                     if (this.connectMaster()) {
-
+                        //region 定时报告 默认5s
                         if (this.isTimeToReportOffset()) {
                             boolean result = this.reportSlaveMaxOffset(this.currentReportedOffset);
                             if (!result) {
                                 this.closeMaster();
                             }
                         }
+                        //endregion
 
                         this.selector.select(1000);
 
@@ -350,17 +376,16 @@ public class HAService {
                             this.closeMaster();
                         }
 
+                        //region
                         if (!reportSlaveMaxOffsetPlus()) {
                             continue;
                         }
+                        //endregion
 
-                        long interval =
-                                HAService.this.getDefaultMessageStore().getSystemClock().now()
-                                        - this.lastWriteTimestamp;
-                        if (interval > HAService.this.getDefaultMessageStore().getMessageStoreConfig()
-                                .getHaHousekeepingInterval()) {
-                            log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress
-                                    + "] expired, " + interval);
+                        long interval = HAService.this.getDefaultMessageStore().getSystemClock().now() - this.lastWriteTimestamp;
+                        //默认20s
+                        if (interval > HAService.this.getDefaultMessageStore().getMessageStoreConfig().getHaHousekeepingInterval()) {
+                            log.warn("HAClient, housekeeping, found this connection[" + this.masterAddress + "] expired, " + interval);
                             this.closeMaster();
                             log.warn("HAClient, master not response some time, so close connection");
                         }
@@ -376,6 +401,9 @@ public class HAService {
             log.info(this.getServiceName() + " service end");
         }
 
+        /**
+         * 更新master地址
+         */
         public void updateMasterAddress(final String newAddr) {
             String currentAddr = this.masterAddress.get();
             if (currentAddr == null || !currentAddr.equals(newAddr)) {
@@ -384,15 +412,17 @@ public class HAService {
             }
         }
 
+        /**
+         * 是否到了像master发送心跳的时间
+         */
         private boolean isTimeToReportOffset() {
-            long interval =
-                    HAService.this.defaultMessageStore.getSystemClock().now() - this.lastWriteTimestamp;
-            boolean needHeart = interval > HAService.this.defaultMessageStore.getMessageStoreConfig()
-                    .getHaSendHeartbeatInterval();
-
-            return needHeart;
+            long interval = HAService.this.defaultMessageStore.getSystemClock().now() - this.lastWriteTimestamp;
+            return interval > HAService.this.defaultMessageStore.getMessageStoreConfig().getHaSendHeartbeatInterval();
         }
 
+        /**
+         * 向master汇报commitlog复制的maxOffset
+         */
         private boolean reportSlaveMaxOffset(final long maxOffset) {
             this.reportOffset.position(0);
             this.reportOffset.limit(8);
@@ -414,6 +444,11 @@ public class HAService {
             return !this.reportOffset.hasRemaining();
         }
 
+        /**
+         * buffer可用空间不足、创建新buffer并将未使用的数据拷贝到新buffer
+         * 旧buffer: --------------------------dispatchpos---头头头头头头头头体1体2体3---limit( = position)
+         * 新buffer: dispatchpos---头头头头头头头头体1体2体3---position------------------limit
+         */
         private void reallocateByteBuffer() {
             int remain = READ_MAX_BUFFER_SIZE - this.dispatchPosition;
             if (remain > 0) {
@@ -431,12 +466,18 @@ public class HAService {
             this.dispatchPosition = 0;
         }
 
+        /**
+         * 交换读buffer和backupbuffer
+         */
         private void swapByteBuffer() {
             ByteBuffer tmp = this.byteBufferRead;
             this.byteBufferRead = this.byteBufferBackup;
             this.byteBufferBackup = tmp;
         }
 
+        /**
+         * 读取收到的commitlog数据
+         */
         private boolean processReadEvent() {
             int readSizeZeroTimes = 0;
             while (this.byteBufferRead.hasRemaining()) {
@@ -466,12 +507,16 @@ public class HAService {
             return true;
         }
 
+        /**
+         * 读取完整同步消息头消息体、追加到slave的commitlog中
+         */
         private boolean dispatchReadRequest() {
             final int msgHeaderSize = 8 + 4; // phyoffset + size
             int readSocketPos = this.byteBufferRead.position();
 
             while (true) {
                 int diff = this.byteBufferRead.position() - this.dispatchPosition;
+                //是否可以读到完整消息头
                 if (diff >= msgHeaderSize) {
                     long masterPhyOffset = this.byteBufferRead.getLong(this.dispatchPosition);
                     int bodySize = this.byteBufferRead.getInt(this.dispatchPosition + 8);
@@ -485,12 +530,12 @@ public class HAService {
                             return false;
                         }
                     }
-
+                    //是否还可以读到完整消息体
                     if (diff >= (msgHeaderSize + bodySize)) {
                         byte[] bodyData = new byte[bodySize];
                         this.byteBufferRead.position(this.dispatchPosition + msgHeaderSize);
                         this.byteBufferRead.get(bodyData);
-
+                        //追加同步数据到slave的commitlog
                         HAService.this.defaultMessageStore.appendToCommitLog(masterPhyOffset, bodyData);
 
                         this.byteBufferRead.position(readSocketPos);
@@ -514,6 +559,9 @@ public class HAService {
             return true;
         }
 
+        /**
+         * 写入master发来的commitlog数据后再次向master汇报新的maxOffset
+         */
         private boolean reportSlaveMaxOffsetPlus() {
             boolean result = true;
             long currentPhyOffset = HAService.this.defaultMessageStore.getMaxPhyOffset();
@@ -529,6 +577,9 @@ public class HAService {
             return result;
         }
 
+        /**
+         * 连接master
+         */
         private boolean connectMaster() throws ClosedChannelException {
             if (null == socketChannel) {
                 String addr = this.masterAddress.get();
@@ -551,6 +602,9 @@ public class HAService {
             return this.socketChannel != null;
         }
 
+        /**
+         * 关闭master连接、重置相关字段
+         */
         private void closeMaster() {
             if (null != this.socketChannel) {
                 try {
@@ -577,7 +631,6 @@ public class HAService {
                 this.byteBufferRead.limit(READ_MAX_BUFFER_SIZE);
             }
         }
-
 
         // private void disableWriteFlag() {
         // if (this.socketChannel != null) {
