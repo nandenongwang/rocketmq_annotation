@@ -181,8 +181,7 @@ public class TransactionalMessageBridge {
                         break;
                     }
                     this.brokerController.getBrokerStatsManager().recordDiskFallBehindTime(group, topic, queueId,
-                            this.brokerController.getMessageStore().now() - foundList.get(foundList.size() - 1)
-                                    .getStoreTimestamp());
+                            this.brokerController.getMessageStore().now() - foundList.get(foundList.size() - 1).getStoreTimestamp());
                     break;
                 case NO_MATCHED_MESSAGE:
                     pullStatus = PullStatus.NO_MATCHED_MSG;

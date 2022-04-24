@@ -784,12 +784,14 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
 
             TopicOffset topicOffset = new TopicOffset();
             long min = this.brokerController.getMessageStore().getMinOffsetInQueue(topic, i);
-            if (min < 0)
+            if (min < 0) {
                 min = 0;
+            }
 
             long max = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
-            if (max < 0)
+            if (max < 0) {
                 max = 0;
+            }
 
             long timestamp = 0;
             if (max > 0) {
@@ -882,7 +884,7 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
 
         ConsumeStats consumeStats = new ConsumeStats();
 
-        //region 消费组消费的topic
+        //region 获取消费组消费的所有topic
         Set<String> topics = new HashSet<>();
         if (UtilAll.isBlank(requestHeader.getTopic())) {
             topics = this.brokerController.getConsumerOffsetManager().whichTopicByConsumer(requestHeader.getConsumerGroup());
@@ -892,6 +894,7 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
         //endregion
 
         for (String topic : topics) {
+            //region 获取topic配置及消费组订阅配置
             TopicConfig topicConfig = this.brokerController.getTopicConfigManager().selectTopicConfig(topic);
             if (null == topicConfig) {
                 log.warn("consumeStats, topic config not exist, {}", topic);
@@ -901,12 +904,12 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
             {
                 SubscriptionData findSubscriptionData = this.brokerController.getConsumerManager().findSubscriptionData(requestHeader.getConsumerGroup(), topic);
 
-                if (null == findSubscriptionData
-                        && this.brokerController.getConsumerManager().findSubscriptionDataCount(requestHeader.getConsumerGroup()) > 0) {
+                if (null == findSubscriptionData && this.brokerController.getConsumerManager().findSubscriptionDataCount(requestHeader.getConsumerGroup()) > 0) {
                     log.warn("consumeStats, the consumer group[{}], topic[{}] not exist", requestHeader.getConsumerGroup(), topic);
                     continue;
                 }
             }
+            //endregion
 
             for (int i = 0; i < topicConfig.getReadQueueNums(); i++) {
                 MessageQueue mq = new MessageQueue();
@@ -916,19 +919,20 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
 
                 OffsetWrapper offsetWrapper = new OffsetWrapper();
 
+                //region 获取consumequeue最大offset和消费组对该consumequeue消费offset
                 long brokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
-                if (brokerOffset < 0)
+                if (brokerOffset < 0) {
                     brokerOffset = 0;
-
+                }
                 long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(requestHeader.getConsumerGroup(), topic, i);
                 if (consumerOffset < 0) {
                     consumerOffset = 0;
                 }
-
-
                 offsetWrapper.setBrokerOffset(brokerOffset);
                 offsetWrapper.setConsumerOffset(consumerOffset);
+                //endregion
 
+                //region 获取各个consumequeue最后一条消息索引存储时间
                 long timeOffset = consumerOffset - 1;
                 if (timeOffset >= 0) {
                     long lastTimestamp = this.brokerController.getMessageStore().getMessageStoreTimeStamp(topic, i, timeOffset);
@@ -936,14 +940,16 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
                         offsetWrapper.setLastTimestamp(lastTimestamp);
                     }
                 }
+                //endregion
 
                 consumeStats.getOffsetTable().put(mq, offsetWrapper);
             }
 
+            //region 设置消费组对所有topic总的消费tps 【非消费tps、实际取值为消费组对该topic拉取tps】
             double consumeTps = this.brokerController.getBrokerStatsManager().tpsGroupGetNums(requestHeader.getConsumerGroup(), topic);
-
             consumeTps += consumeStats.getConsumeTps();
             consumeStats.setConsumeTps(consumeTps);
+            //endregion
         }
 
         byte[] body = consumeStats.encode();
@@ -1395,15 +1401,14 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
         runtimeInfo.put("brokerVersionDesc", MQVersion.getVersionDesc(MQVersion.CURRENT_VERSION));
         runtimeInfo.put("brokerVersion", String.valueOf(MQVersion.CURRENT_VERSION));
 
-        runtimeInfo.put("msgPutTotalYesterdayMorning",
-                String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalYesterdayMorning()));
+        runtimeInfo.put("msgPutTotalYesterdayMorning", String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalYesterdayMorning()));
         runtimeInfo.put("msgPutTotalTodayMorning", String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalTodayMorning()));
-        runtimeInfo.put("msgPutTotalTodayNow", String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalTodayNow()));
+//        runtimeInfo.put("msgPutTotalTodayNow", String.valueOf(this.brokerController.getBrokerStats().getMsgPutTotalTodayNow()));
 
         runtimeInfo.put("msgGetTotalYesterdayMorning",
                 String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalYesterdayMorning()));
         runtimeInfo.put("msgGetTotalTodayMorning", String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalTodayMorning()));
-        runtimeInfo.put("msgGetTotalTodayNow", String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalTodayNow()));
+//        runtimeInfo.put("msgGetTotalTodayNow", String.valueOf(this.brokerController.getBrokerStats().getMsgGetTotalTodayNow()));
 
         runtimeInfo.put("sendThreadPoolQueueSize", String.valueOf(this.brokerController.getSendThreadPoolQueue().size()));
 
