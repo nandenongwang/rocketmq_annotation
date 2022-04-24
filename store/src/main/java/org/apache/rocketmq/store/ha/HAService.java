@@ -51,12 +51,21 @@ public class HAService {
     @Getter
     private final DefaultMessageStore defaultMessageStore;
 
+    /**
+     * 未使用
+     */
     @Getter
     private final WaitNotifyObject waitNotifyObject = new WaitNotifyObject();
 
+    /**
+     * salve已经确认接收到的最大maxOffset
+     */
     @Getter
     private final AtomicLong push2SlaveMaxOffset = new AtomicLong(0);
 
+    /**
+     * 组传输等待服务
+     */
     private final GroupTransferService groupTransferService;
 
     /**
@@ -81,14 +90,14 @@ public class HAService {
     }
 
     /**
-     * 提交日志组传输请求
+     * 提交等待日志组同步请求
      */
     public void putRequest(final CommitLog.GroupCommitRequest request) {
         this.groupTransferService.putRequest(request);
     }
 
     /**
-     *
+     * salve同步是否健康 【进度差距是否小于slave最大落后进度、默认256m】
      */
     public boolean isSlaveOK(final long masterPutWhere) {
         boolean result = this.connectionCount.get() > 0;
@@ -97,7 +106,7 @@ public class HAService {
     }
 
     /**
-     *
+     * 更新slave签收的最大日志offset并检查所有等待请求是否可唤醒
      */
     public void notifyTransferSome(final long offset) {
         for (long value = this.push2SlaveMaxOffset.get(); offset > value; ) {
@@ -118,7 +127,8 @@ public class HAService {
     /**
      * 启动master等待slave连接线程
      * 启动salve接收同步日志线程
-     * 启动
+     * 启动master同步等待检查线程
+     * 启动slave客户端
      */
     public void start() throws Exception {
         this.acceptSocketService.beginAccept();
@@ -128,7 +138,10 @@ public class HAService {
     }
 
     /**
-     *
+     * 关闭salve客户端
+     * 关闭master接受连接线程
+     * 关闭master的slave连接对象及其读写线程
+     * 关闭master同步等待检查线程
      */
     public void shutdown() {
         this.haClient.shutdown();
@@ -255,14 +268,24 @@ public class HAService {
     }
 
     /**
-     *
+     * 日志复制请求等待服务
      */
     class GroupTransferService extends ServiceThread {
 
+        /**
+         * 等待工具对象
+         */
         private final WaitNotifyObject notifyTransferObject = new WaitNotifyObject();
+
+        /**
+         * 等待同步请求
+         */
         private volatile List<CommitLog.GroupCommitRequest> requestsWrite = new ArrayList<>();
         private volatile List<CommitLog.GroupCommitRequest> requestsRead = new ArrayList<>();
 
+        /**
+         * 添加新的被管理等待请求
+         */
         public synchronized void putRequest(final CommitLog.GroupCommitRequest request) {
             synchronized (this.requestsWrite) {
                 this.requestsWrite.add(request);
@@ -270,6 +293,7 @@ public class HAService {
             this.wakeup();
         }
 
+        @Override
         public void run() {
             log.info(this.getServiceName() + " service started");
 
@@ -285,21 +309,23 @@ public class HAService {
             log.info(this.getServiceName() + " service end");
         }
 
+        /**
+         * 唤醒doWaitTransfer时阻塞在notifyTransferObject上的检查请求
+         */
         public void notifyTransferSome() {
             this.notifyTransferObject.wakeup();
         }
 
-        private void swapRequests() {
-            List<CommitLog.GroupCommitRequest> tmp = this.requestsWrite;
-            this.requestsWrite = this.requestsRead;
-            this.requestsRead = tmp;
-        }
-
+        /**
+         * 阻塞检查所有请求是否同步完成
+         */
         private void doWaitTransfer() {
             synchronized (this.requestsRead) {
                 if (!this.requestsRead.isEmpty()) {
                     for (CommitLog.GroupCommitRequest req : this.requestsRead) {
+                        //当前请求的offset是否已经完成slave同步
                         boolean transferOK = HAService.this.push2SlaveMaxOffset.get() >= req.getNextOffset();
+                        //等待日志同步完成超时 默认5s
                         long waitUntilWhen = HAService.this.defaultMessageStore.getSystemClock().now() + HAService.this.defaultMessageStore.getMessageStoreConfig().getSyncFlushTimeout();
                         while (!transferOK && HAService.this.defaultMessageStore.getSystemClock().now() < waitUntilWhen) {
                             this.notifyTransferObject.waitForRunning(1000);
@@ -310,6 +336,7 @@ public class HAService {
                             log.warn("transfer messsage to slave timeout, " + req.getNextOffset());
                         }
 
+                        //完成该请求内的future、唤醒因等待同步而阻塞在future上的请求
                         req.wakeupCustomer(transferOK ? PutMessageStatus.PUT_OK : PutMessageStatus.FLUSH_SLAVE_TIMEOUT);
                     }
 
@@ -321,6 +348,12 @@ public class HAService {
         @Override
         protected void onWaitEnd() {
             this.swapRequests();
+        }
+
+        private void swapRequests() {
+            List<CommitLog.GroupCommitRequest> tmp = this.requestsWrite;
+            this.requestsWrite = this.requestsRead;
+            this.requestsRead = tmp;
         }
 
         @Override
