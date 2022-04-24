@@ -300,8 +300,9 @@ public class HAConnection {
                         //endregion
                     } else {
                         this.lastWriteOver = this.transferData();
-                        if (!this.lastWriteOver)
+                        if (!this.lastWriteOver) {
                             continue;
+                        }
                     }
                     //读取可传输数据
                     SelectMappedBufferResult selectResult = HAConnection.this.haService.getDefaultMessageStore().getCommitLogData(this.nextTransferFromWhere);
@@ -341,8 +342,9 @@ public class HAConnection {
                 }
             }
 
-            //region 关闭
             HAConnection.this.haService.getWaitNotifyObject().removeFromWaitingThreadTable();
+
+            //region 关闭
 
             if (this.selectMappedBufferResult != null) {
                 this.selectMappedBufferResult.release();
