@@ -453,7 +453,7 @@ public class DefaultMessageStore implements MessageStore {
             this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
             if (null == result || !result.isOk()) {
-                this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
+                this.storeStatsService.putMessageFailedTimesIncrementAndGet();
             }
         });
         //endregion
@@ -492,7 +492,7 @@ public class DefaultMessageStore implements MessageStore {
             this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
             if (null == result || !result.isOk()) {
-                this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
+                this.storeStatsService.putMessageFailedTimesIncrementAndGet();
             }
         });
         //endregion
@@ -529,7 +529,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
         if (null == result || !result.isOk()) {
-            this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
+            this.storeStatsService.putMessageFailedTimesIncrementAndGet();
         }
         //endregion
         return result;
@@ -560,7 +560,7 @@ public class DefaultMessageStore implements MessageStore {
         this.storeStatsService.setPutMessageEntireTimeMax(elapsedTime);
 
         if (null == result || !result.isOk()) {
-            this.storeStatsService.getPutMessageFailedTimes().incrementAndGet();
+            this.storeStatsService.putMessageFailedTimesIncrementAndGet();
         }
 
         return result;
@@ -731,7 +731,7 @@ public class DefaultMessageStore implements MessageStore {
                             }
                             //endregion
 
-                            this.storeStatsService.getGetMessageTransferedMsgCount().incrementAndGet();
+                            this.storeStatsService.getGetMessageTransferedMsgCountIncrementAndGet();
                             getResult.addMessage(selectResult);
                             status = GetMessageStatus.FOUND;
                             nextPhyFileStartOffset = Long.MIN_VALUE;
@@ -768,9 +768,9 @@ public class DefaultMessageStore implements MessageStore {
 
         //region 更新统计信息
         if (GetMessageStatus.FOUND == status) {
-            this.storeStatsService.getGetMessageTimesTotalFound().incrementAndGet();
+            this.storeStatsService.getGetMessageTimesTotalFoundIncrementAndGet();
         } else {
-            this.storeStatsService.getGetMessageTimesTotalMiss().incrementAndGet();
+            this.storeStatsService.getMessageTimesTotalMissIncrementAndGet();
         }
         long elapsedTime = this.getSystemClock().now() - beginTime;
         this.storeStatsService.setGetMessageEntireTimeMax(elapsedTime);
