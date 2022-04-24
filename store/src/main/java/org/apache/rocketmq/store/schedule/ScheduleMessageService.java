@@ -8,6 +8,7 @@ import java.util.TimerTask;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicBoolean;
+
 import org.apache.rocketmq.common.ConfigManager;
 import org.apache.rocketmq.common.TopicFilterType;
 import org.apache.rocketmq.common.constant.LoggerName;
@@ -38,20 +39,36 @@ import org.apache.rocketmq.store.config.StorePathConfigHelper;
  */
 public class ScheduleMessageService extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
+    private final DefaultMessageStore defaultMessageStore;
+    private MessageStore writeMessageStore;
 
     private static final long FIRST_DELAY_TIME = 1000L;
     private static final long DELAY_FOR_A_WHILE = 100L;
     private static final long DELAY_FOR_A_PERIOD = 10000L;
 
-    private final ConcurrentMap<Integer /* level */, Long/* delay timeMillis */> delayLevelTable =
-            new ConcurrentHashMap<>(32);
-    //18 个level
-    private final ConcurrentMap<Integer /* level */, Long/* offset */> offsetTable =
-            new ConcurrentHashMap<>(32);
-    private final DefaultMessageStore defaultMessageStore;
+    /**
+     * 各延时等级对应延时时间
+     */
+    private final ConcurrentMap<Integer /* level */, Long/* delay timeMillis */> delayLevelTable = new ConcurrentHashMap<>(32);
+
+    /**
+     * 各延时登记延时进度
+     */
+    private final ConcurrentMap<Integer /* level */, Long/* offset */> offsetTable = new ConcurrentHashMap<>(32);
+
+    /**
+     * 延时调度服务启动状态
+     */
     private final AtomicBoolean started = new AtomicBoolean(false);
+
+    /**
+     * 定时调度timer
+     */
     private Timer timer;
-    private MessageStore writeMessageStore;
+
+    /**
+     * 最大延时等级
+     */
     private int maxDelayLevel;
 
     public ScheduleMessageService(final DefaultMessageStore defaultMessageStore) {
@@ -68,17 +85,14 @@ public class ScheduleMessageService extends ConfigManager {
     }
 
     /**
-     * @param writeMessageStore
-     *     the writeMessageStore to set
+     * @param writeMessageStore the writeMessageStore to set
      */
     public void setWriteMessageStore(MessageStore writeMessageStore) {
         this.writeMessageStore = writeMessageStore;
     }
 
     public void buildRunningStats(HashMap<String, String> stats) {
-        Iterator<Map.Entry<Integer, Long>> it = this.offsetTable.entrySet().iterator();
-        while (it.hasNext()) {
-            Map.Entry<Integer, Long> next = it.next();
+        for (Map.Entry<Integer, Long> next : this.offsetTable.entrySet()) {
             int queueId = delayLevel2QueueId(next.getKey());//level - 1 = 0 1 2 ...15
             long delayOffset = next.getValue();
             long maxOffset = this.defaultMessageStore.getMaxOffsetInQueue(TopicValidator.RMQ_SYS_SCHEDULE_TOPIC, queueId);
