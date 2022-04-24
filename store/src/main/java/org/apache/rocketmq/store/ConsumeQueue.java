@@ -17,45 +17,77 @@ import java.util.List;
  */
 public class ConsumeQueue {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-
-    public static final int CQ_STORE_UNIT_SIZE = 20;
     private static final InternalLogger LOG_ERROR = InternalLoggerFactory.getLogger(LoggerName.STORE_ERROR_LOGGER_NAME);
 
+    /**
+     * 单个消费索引大小 20字节 = 8字节commitlogoffset + 4字节消息大小 + 消息tags哈希码(或扩展段地址)
+     */
+    public static final int CQ_STORE_UNIT_SIZE = 20;
+
+    /**
+     * 消息存储服务
+     */
     private final DefaultMessageStore defaultMessageStore;
 
+    /**
+     * queueId下索引消费索引的映射文件
+     */
     private final MappedFileQueue mappedFileQueue;
+
+    /**
+     * 所属topic
+     */
     @Getter
     private final String topic;
+
+    /**
+     * 所属队列ID
+     */
     @Getter
     private final int queueId;
-    private final ByteBuffer byteBufferIndex;//20 byte
 
+    /**
+     * 单个消费索引项buffer 默认20字节
+     */
+    private final ByteBuffer byteBufferIndex;
+
+    /**
+     * 存储目录 【${user.home}/store/comsumequeue】
+     */
     private final String storePath;
+
+    /**
+     * 单个consumequeue文件大小 【默认 300000个*20字节 = 5.72MB】
+     */
     private final int mappedFileSize;//5.72MB
+
+    /**
+     *
+     */
     @Getter
     @Setter
     private long maxPhysicOffset = -1;
+
+    /**
+     *
+     */
     @Getter
     @Setter
     private volatile long minLogicOffset = 0;
+
+    /**
+     * 消息队列扩展
+     */
     private ConsumeQueueExt consumeQueueExt = null;
 
-    public ConsumeQueue(
-            final String topic,//topic
-            final int queueId,//queueId 0,1,2,3
-            final String storePath,//${user.home}/store/comsumequeue
-            final int mappedFileSize,//默认 300000个*20字节 = 5.72MB
-            final DefaultMessageStore defaultMessageStore) {
+    public ConsumeQueue(String topic, int queueId, String storePath, int mappedFileSize, DefaultMessageStore defaultMessageStore) {
         this.storePath = storePath;
         this.mappedFileSize = mappedFileSize;
         this.defaultMessageStore = defaultMessageStore;
-
         this.topic = topic;
         this.queueId = queueId;
 
-        String queueDir = this.storePath
-                + File.separator + topic
-                + File.separator + queueId;
+        String queueDir = this.storePath + File.separator + topic + File.separator + queueId;
 
         this.mappedFileQueue = new MappedFileQueue(queueDir, mappedFileSize, null);
 
@@ -72,6 +104,9 @@ public class ConsumeQueue {
         }
     }
 
+    /**
+     * 载入该queueId下已存在consumequeue文件
+     */
     public boolean load() {
         boolean result = this.mappedFileQueue.load();
         log.info("load consume queue " + this.topic + "-" + this.queueId + " " + (result ? "OK" : "Failed"));
