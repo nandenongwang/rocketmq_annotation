@@ -1,18 +1,19 @@
 package org.apache.rocketmq.store;
 
-import java.text.MessageFormat;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.ReentrantLock;
-
+import lombok.AllArgsConstructor;
+import lombok.Getter;
 import org.apache.rocketmq.common.ServiceThread;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
+
+import java.text.MessageFormat;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * 每秒记录 messagestore put、get等操作次数
@@ -32,21 +33,28 @@ public class StoreStatsService extends ServiceThread {
 
     private static int printTPSInterval = 60 * 1;
 
+    @Getter
     private final AtomicLong putMessageFailedTimes = new AtomicLong(0);
 
+    @Getter
     private final ConcurrentMap<String, AtomicLong> putMessageTopicTimesTotal = new ConcurrentHashMap<>(128);
+    @Getter
     private final ConcurrentMap<String, AtomicLong> putMessageTopicSizeTotal = new ConcurrentHashMap<>(128);
-
+    @Getter
     private final AtomicLong getMessageTimesTotalFound = new AtomicLong(0);
+    @Getter
     private final AtomicLong getMessageTransferedMsgCount = new AtomicLong(0);
+    @Getter
     private final AtomicLong getMessageTimesTotalMiss = new AtomicLong(0);
-    private final LinkedList<CallSnapshot> putTimesList = new LinkedList<CallSnapshot>();
 
-    private final LinkedList<CallSnapshot> getTimesFoundList = new LinkedList<CallSnapshot>();
-    private final LinkedList<CallSnapshot> getTimesMissList = new LinkedList<CallSnapshot>();
-    private final LinkedList<CallSnapshot> transferedMsgCountList = new LinkedList<CallSnapshot>();
+    private final LinkedList<CallSnapshot> putTimesList = new LinkedList<>();
+
+    private final LinkedList<CallSnapshot> getTimesFoundList = new LinkedList<>();
+    private final LinkedList<CallSnapshot> getTimesMissList = new LinkedList<>();
+    private final LinkedList<CallSnapshot> transferedMsgCountList = new LinkedList<>();
     private volatile AtomicLong[] putMessageDistributeTime;
-    private long messageStoreBootTimestamp = System.currentTimeMillis();
+    private final long messageStoreBootTimestamp = System.currentTimeMillis();
+    @Getter
     private volatile long putMessageEntireTimeMax = 0;
     private volatile long getMessageEntireTimeMax = 0;
     // for putMessageEntireTimeMax
@@ -76,15 +84,12 @@ public class StoreStatsService extends ServiceThread {
         return old;
     }
 
-    public long getPutMessageEntireTimeMax() {
-        return putMessageEntireTimeMax;
-    }
-
     public void setPutMessageEntireTimeMax(long value) {
         final AtomicLong[] times = this.putMessageDistributeTime;
 
-        if (null == times)
+        if (null == times) {
             return;
+        }
 
         // us
         if (value <= 0) {
@@ -217,79 +222,30 @@ public class StoreStatsService extends ServiceThread {
     }
 
     private String getPutTps() {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(this.getPutTps(10));
-        sb.append(" ");
-
-        sb.append(this.getPutTps(60));
-        sb.append(" ");
-
-        sb.append(this.getPutTps(600));
-
-        return sb.toString();
+        return this.getPutTps(10) + " " + this.getPutTps(60) + " " + this.getPutTps(600);
     }
 
     private String getGetFoundTps() {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(this.getGetFoundTps(10));
-        sb.append(" ");
-
-        sb.append(this.getGetFoundTps(60));
-        sb.append(" ");
-
-        sb.append(this.getGetFoundTps(600));
-
-        return sb.toString();
+        return this.getGetFoundTps(10) + " " + this.getGetFoundTps(60) + " " + this.getGetFoundTps(600);
     }
 
     private String getGetMissTps() {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(this.getGetMissTps(10));
-        sb.append(" ");
-
-        sb.append(this.getGetMissTps(60));
-        sb.append(" ");
-
-        sb.append(this.getGetMissTps(600));
-
-        return sb.toString();
+        return this.getGetMissTps(10) + " " + this.getGetMissTps(60) + " " + this.getGetMissTps(600);
     }
 
     private String getGetTotalTps() {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(this.getGetTotalTps(10));
-        sb.append(" ");
-
-        sb.append(this.getGetTotalTps(60));
-        sb.append(" ");
-
-        sb.append(this.getGetTotalTps(600));
-
-        return sb.toString();
+        return this.getGetTotalTps(10) + " " + this.getGetTotalTps(60) + " " + this.getGetTotalTps(600);
     }
 
     private String getGetTransferedTps() {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append(this.getGetTransferedTps(10));
-        sb.append(" ");
-
-        sb.append(this.getGetTransferedTps(60));
-        sb.append(" ");
-
-        sb.append(this.getGetTransferedTps(600));
-
-        return sb.toString();
+        return this.getGetTransferedTps(10) + " " + this.getGetTransferedTps(60) + " " + this.getGetTransferedTps(600);
     }
 
     private String putMessageDistributeTimeToString() {
         final AtomicLong[] times = this.putMessageDistributeTime;
-        if (null == times)
+        if (null == times) {
             return null;
+        }
 
         final StringBuilder sb = new StringBuilder();
         for (int i = 0; i < times.length; i++) {
@@ -408,7 +364,7 @@ public class StoreStatsService extends ServiceThread {
     public HashMap<String, String> getRuntimeInfo() {
         HashMap<String, String> result = new HashMap<String, String>(64);
 
-        Long totalTimes = getPutMessageTimesTotal();
+        long totalTimes = getPutMessageTimesTotal();
         if (0 == totalTimes) {
             totalTimes = 1L;
         }
@@ -421,7 +377,7 @@ public class StoreStatsService extends ServiceThread {
         result.put("putMessageDistributeTime",
                 String.valueOf(this.getPutMessageDistributeTimeStringInfo(totalTimes)));
         result.put("putMessageAverageSize",
-                String.valueOf(this.getPutMessageSizeTotal() / totalTimes.doubleValue()));
+                String.valueOf(this.getPutMessageSizeTotal() / (double) totalTimes));
         result.put("dispatchMaxBuffer", String.valueOf(this.dispatchMaxBuffer));
         result.put("getMessageEntireTimeMax", String.valueOf(this.getMessageEntireTimeMax));
         result.put("putTps", String.valueOf(this.getPutTps()));
@@ -433,6 +389,7 @@ public class StoreStatsService extends ServiceThread {
         return result;
     }
 
+    @Override
     public void run() {
         log.info(this.getServiceName() + " service started");
 
@@ -516,22 +473,6 @@ public class StoreStatsService extends ServiceThread {
         }
     }
 
-    public AtomicLong getGetMessageTimesTotalFound() {
-        return getMessageTimesTotalFound;
-    }
-
-    public AtomicLong getGetMessageTimesTotalMiss() {
-        return getMessageTimesTotalMiss;
-    }
-
-    public AtomicLong getGetMessageTransferedMsgCount() {
-        return getMessageTransferedMsgCount;
-    }
-
-    public AtomicLong getPutMessageFailedTimes() {
-        return putMessageFailedTimes;
-    }
-
     public AtomicLong getSinglePutMessageTopicSizeTotal(String topic) {
         AtomicLong rs = putMessageTopicSizeTotal.get(topic);
         if (null == rs) {
@@ -556,28 +497,30 @@ public class StoreStatsService extends ServiceThread {
         return rs;
     }
 
-    public Map<String, AtomicLong> getPutMessageTopicTimesTotal() {
-        return putMessageTopicTimesTotal;
-    }
-
-    public Map<String, AtomicLong> getPutMessageTopicSizeTotal() {
-        return putMessageTopicSizeTotal;
-    }
-
+    /**
+     * 瞬时调用快照
+     */
+    @AllArgsConstructor
     static class CallSnapshot {
+
+        /**
+         * 调用时间戳
+         */
         public final long timestamp;
+
+        /**
+         * 总调用次数
+         */
         public final long callTimesTotal;
 
-        public CallSnapshot(long timestamp, long callTimesTotal) {
-            this.timestamp = timestamp;
-            this.callTimesTotal = callTimesTotal;
-        }
-
-        public static double getTPS(final CallSnapshot begin, final CallSnapshot end) {
+        /**
+         * 计算两次瞬时快照时间段内指标tps
+         */
+        public static double getTPS(CallSnapshot begin, CallSnapshot end) {
             long total = end.callTimesTotal - begin.callTimesTotal;
-            Long time = end.timestamp - begin.timestamp;
+            long time = end.timestamp - begin.timestamp;
 
-            double tps = total / time.doubleValue();
+            double tps = total / (double) time;
 
             return tps * 1000;
         }

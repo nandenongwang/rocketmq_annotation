@@ -1,56 +1,90 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.store;
+
+import lombok.Data;
 
 import java.util.Map;
 
+/**
+ * 消息分派请求
+ */
+@Data
 public class DispatchRequest {
+
+    /**
+     * 消息topic
+     */
     private final String topic;
+
+    /**
+     * 要写入的consumequeueId
+     */
     private final int queueId;
+
+    /**
+     * commitlog位置
+     */
     private final long commitLogOffset;
+
+    /**
+     * 消息总大小
+     */
     private int msgSize;
+
+    /**
+     * 消息tags哈希码
+     */
     private final long tagsCode;
+
+    /**
+     * 消息存储时间
+     */
     private final long storeTimestamp;
+
+    /**
+     * consumequeue位置
+     */
     private final long consumeQueueOffset;
+
+    /**
+     * 消息构建索引keys
+     */
     private final String keys;
+
+    /**
+     * 分派器处理结果
+     */
     private final boolean success;
+
+    /**
+     * 客户端生成唯一消息ID
+     */
     private final String uniqKey;
 
+    /**
+     * sysFlag 【pull提交、事务标识等】
+     */
     private final int sysFlag;
+
+    /**
+     * half消息commitlog位置 【与commitLogOffset相同】
+     */
     private final long preparedTransactionOffset;
+
+    /**
+     * 消息properties
+     */
     private final Map<String, String> propertiesMap;
+
+    /**
+     * 消息满足订阅条件消费组位图
+     */
     private byte[] bitMap;
+
 
     private int bufferSize = -1;//the buffer size maybe larger than the msg size if the message is wrapped by something
 
-    public DispatchRequest(
-        final String topic,
-        final int queueId,
-        final long commitLogOffset,
-        final int msgSize,
-        final long tagsCode,
-        final long storeTimestamp,
-        final long consumeQueueOffset,
-        final String keys,
-        final String uniqKey,
-        final int sysFlag,
-        final long preparedTransactionOffset,
-        final Map<String, String> propertiesMap
-    ) {
+    public DispatchRequest(String topic, int queueId, long commitLogOffset, int msgSize, long tagsCode, long storeTimestamp, long consumeQueueOffset,
+                           String keys, String uniqKey, int sysFlag, long preparedTransactionOffset, Map<String, String> propertiesMap) {
         this.topic = topic;
         this.queueId = queueId;
         this.commitLogOffset = commitLogOffset;
@@ -97,77 +131,5 @@ public class DispatchRequest {
         this.preparedTransactionOffset = 0;
         this.success = success;
         this.propertiesMap = null;
-    }
-
-    public String getTopic() {
-        return topic;
-    }
-
-    public int getQueueId() {
-        return queueId;
-    }
-
-    public long getCommitLogOffset() {
-        return commitLogOffset;
-    }
-
-    public int getMsgSize() {
-        return msgSize;
-    }
-
-    public long getStoreTimestamp() {
-        return storeTimestamp;
-    }
-
-    public long getConsumeQueueOffset() {
-        return consumeQueueOffset;
-    }
-
-    public String getKeys() {
-        return keys;
-    }
-
-    public long getTagsCode() {
-        return tagsCode;
-    }
-
-    public int getSysFlag() {
-        return sysFlag;
-    }
-
-    public long getPreparedTransactionOffset() {
-        return preparedTransactionOffset;
-    }
-
-    public boolean isSuccess() {
-        return success;
-    }
-
-    public String getUniqKey() {
-        return uniqKey;
-    }
-
-    public Map<String, String> getPropertiesMap() {
-        return propertiesMap;
-    }
-
-    public byte[] getBitMap() {
-        return bitMap;
-    }
-
-    public void setBitMap(byte[] bitMap) {
-        this.bitMap = bitMap;
-    }
-
-    public void setMsgSize(int msgSize) {
-        this.msgSize = msgSize;
-    }
-
-    public int getBufferSize() {
-        return bufferSize;
-    }
-
-    public void setBufferSize(int bufferSize) {
-        this.bufferSize = bufferSize;
     }
 }

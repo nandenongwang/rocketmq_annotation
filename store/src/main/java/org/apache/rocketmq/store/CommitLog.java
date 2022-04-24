@@ -45,9 +45,13 @@ public class CommitLog {
 
     private final AppendMessageCallback appendMessageCallback;
     private final ThreadLocal<MessageExtBatchEncoder> batchEncoderThreadLocal;
+
+    /**
+     * topic各queue下次写入offset 【每次写入commitlog使用后+1】
+     */
     @Getter
     @Setter
-    protected HashMap<String/* topic-queueid */, Long/* offset */> topicQueueTable = new HashMap<>(1024);
+    protected HashMap<String/* topic-queueId */, Long/* offset */> topicQueueTable = new HashMap<>(1024);
     @Getter
     @Setter
     protected volatile long confirmOffset = -1L;
