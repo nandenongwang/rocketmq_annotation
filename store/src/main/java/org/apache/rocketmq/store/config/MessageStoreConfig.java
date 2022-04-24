@@ -305,11 +305,13 @@ public class MessageStoreConfig {
     }
 
     public int getDiskMaxUsedSpaceRatio() {
-        if (this.diskMaxUsedSpaceRatio < 10)
+        if (this.diskMaxUsedSpaceRatio < 10) {
             return 10;
+        }
 
-        if (this.diskMaxUsedSpaceRatio > 95)
+        if (this.diskMaxUsedSpaceRatio > 95) {
             return 95;
+        }
 
         return diskMaxUsedSpaceRatio;
     }
