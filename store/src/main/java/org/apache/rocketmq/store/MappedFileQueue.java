@@ -74,7 +74,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 检查文件数据是否正常 【仅检查文件名对应物理offset差需等于文件大小】
+     * 检查文件数据是否正常 【仅检查文件名对应物理offset之差是否等于文件大小】
      */
     public void checkSelf() {
 
@@ -96,7 +96,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 查询指定数据项存储时间数据所在mappedFile【遍历查找最早修改时间大于该存储时间的、该数据必在此mappedFile中】
+     * 查询指定数据项存储时间数据所在mappedFile【遍历查找最后修改时间大于该存储时间的文件、该数据必在此mappedFile中】
      */
     public MappedFile getMappedFileByTime(long timestamp) {
         Object[] mfs = this.copyMappedFiles(0);
@@ -130,7 +130,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 加载映射文件队列存储目录下所有文件 【单个映射文件的写、刷新、提交位置均初始化为文件大小即文件末尾】
+     * 将加载映射文件队列存储目录下所有文件加载成mappedFile 【单个映射文件的读写、刷新、提交位置均初始化为文件大小即文件末尾】
      */
     public boolean load() {
         File dir = new File(this.storePath);
@@ -165,7 +165,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 还有多少数据未刷盘
+     * 还有多少字节数据未刷盘
      */
     public long howMuchFallBehind() {
         if (this.mappedFiles.isEmpty()) {
@@ -184,16 +184,16 @@ public class MappedFileQueue {
     }
 
     /**
-     * 获取最后一个可写mappedFile 【不存在则按startOffset新创建】
+     * 获取最后一个可写mappedFile 【不存在则根据startOffset新创建】
      */
     public MappedFile getLastMappedFile(long startOffset) {
         return getLastMappedFile(startOffset, true);
     }
 
     /**
-     * 获取最后一个可写mappedFile
+     * 获取最后一个可写mappedFile 【startOffset用于计算不存在任何mappedFile时的文件起始offset 默认0 】
      */
-    public MappedFile getLastMappedFile(long startOffset/* 用于计算不存在任何mappedFile时的文件起始offset 默认0 */, boolean needCreate) {
+    public MappedFile getLastMappedFile(long startOffset/* */, boolean needCreate) {
         long createOffset = -1;
         MappedFile mappedFileLast = getLastMappedFile();
 
@@ -289,7 +289,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 物理重置逻辑mappedFile最大offset 【移除offset之后的文件、并将当前文件读写、刷新、提交位置都设为指定offset】
+     * 重置mappedFile最大读写位置 【移除offset之后的文件、并将当前文件读写、刷新、提交位置都设为指定offset(当前文件指定位置后的重复利用时会被覆盖)】
      */
     public boolean resetOffset(long offset) {
         MappedFile mappedFileLast = getLastMappedFile();
@@ -339,7 +339,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 获取最大物理offset 【最后一个mappedFile的fileFromOffset + 可读数据position、可能部分还未刷盘】
+     * 查询最大物理offset 【最后一个mappedFile的fileFromOffset + 可读数据position、可能部分还未刷盘】
      */
     public long getMaxOffset() {
         MappedFile mappedFile = getLastMappedFile();
@@ -361,21 +361,21 @@ public class MappedFileQueue {
     }
 
     /**
-     * 计算还有多少数据未提交
+     * 计算还有多少字节数据未提交
      */
     public long remainHowManyDataToCommit() {
         return getMaxWrotePosition() - committedWhere;
     }
 
     /**
-     * 计算还有多少数据未刷盘
+     * 计算还有多少字节数据未刷盘
      */
     public long remainHowManyDataToFlush() {
         return getMaxOffset() - flushedWhere;
     }
 
     /**
-     * 过期文件销毁后从被mappedqueue管理的mappedFile列表中移除
+     * 从将指定映射文件从被mappedqueue管理的mappedFile列表中移除 【过期文件销毁后】
      */
     void deleteExpiredFile(List<MappedFile> files) {
 
@@ -472,7 +472,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 销毁过期的consumequeue映射文件 【读取mappedfile最后20字节的消费索引获取物理offset > 指定offset则该消费队列映射已过期】
+     * 销毁过期的consumequeue映射文件 【读取mappedfile最后20字节的消费索引获取物理offset < 指定offset则该消费队列映射文件已过期】
      */
     public int deleteExpiredFileByOffset(long offset/* 默认最小物理offset */, int unitSize /* 默认消费索引单元大小 20字节 */) {
         Object[] mfs = this.copyMappedFiles(0);
@@ -518,7 +518,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 将脏数据刷盘、并更新物理日志刷盘位置
+     * 将脏数据刷盘、并更新mappedFile刷盘位置
      */
     public boolean flush(int flushLeastPages) {
         boolean result = true;
@@ -538,7 +538,7 @@ public class MappedFileQueue {
     }
 
     /**
-     * 提交写缓冲中脏数据、并更新物理日志的提交位置
+     * 提交写缓冲中脏数据、并更新mappedFile的提交位置
      */
     public boolean commit(int commitLeastPages) {
         boolean result = true;
