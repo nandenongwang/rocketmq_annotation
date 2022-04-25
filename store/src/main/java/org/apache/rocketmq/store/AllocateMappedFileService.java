@@ -17,7 +17,7 @@ import java.util.concurrent.*;
  */
 public class AllocateMappedFileService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
-    private static int waitTimeOut = 1000 * 5;
+    private static final int waitTimeOut = 1000 * 5;
     private final ConcurrentMap<String, AllocateRequest> requestTable = new ConcurrentHashMap<>();
     private final PriorityBlockingQueue<AllocateRequest> requestQueue = new PriorityBlockingQueue<>();
     private volatile boolean hasException = false;

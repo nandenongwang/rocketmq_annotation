@@ -96,17 +96,17 @@ public class MappedFile extends ReferenceResource {
     protected ByteBuffer writeBuffer = null;
 
     /**
-     * 当前写入位置
+     * 当前写入位置 【文件本身位置】
      */
     protected final AtomicInteger wrotePosition = new AtomicInteger(0);
 
     /**
-     * 临时写缓冲提交位置
+     * 临时写缓冲提交位置 【文件本身位置】
      */
     protected final AtomicInteger committedPosition = new AtomicInteger(0);
 
     /**
-     * 已刷盘刷盘位置
+     * 已刷盘刷盘位置 【文件本身位置】
      */
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
 
@@ -510,7 +510,8 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 映射文件中读写指针指向位置
+     * 可读数据位置 【映射文件中读写指针指向位置】
+     * 未启用写缓冲即write 启用写缓冲为commit(commit到write中的数据还在缓冲内存中)
      * The max position which have valid data
      */
     public int getReadPosition() {

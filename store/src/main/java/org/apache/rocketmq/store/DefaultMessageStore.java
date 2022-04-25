@@ -1841,7 +1841,7 @@ public class DefaultMessageStore implements MessageStore {
             cleanImmediately = false;
 
             {
-                //实际使用率
+                //commitlog 所在磁盘使用率
                 double physicRatio = UtilAll.getDiskPartitionSpaceUsedPercent(getStorePathPhysic());
                 if (physicRatio > diskSpaceWarningLevelRatio) {
                     boolean diskok = DefaultMessageStore.this.runningFlags.getAndMakeDiskFull();
@@ -1866,7 +1866,7 @@ public class DefaultMessageStore implements MessageStore {
             }
 
             {
-                //consume queue 存储位置
+                //consumequeue 所在磁盘使用率
                 String storePathLogics = StorePathConfigHelper.getStorePathConsumeQueue(DefaultMessageStore.this.getMessageStoreConfig().getStorePathRootDir());
                 double logicsRatio = UtilAll.getDiskPartitionSpaceUsedPercent(storePathLogics);
                 if (logicsRatio > diskSpaceWarningLevelRatio) {
