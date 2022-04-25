@@ -13,17 +13,15 @@ import java.util.ServiceLoader;
 import java.util.concurrent.*;
 
 /**
- * Create MappedFile in advance
+ * 映射文件创建服务
  */
 public class AllocateMappedFileService extends ServiceThread {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
     private static int waitTimeOut = 1000 * 5;
-    private ConcurrentMap<String, AllocateRequest> requestTable =
-            new ConcurrentHashMap<String, AllocateRequest>();
-    private PriorityBlockingQueue<AllocateRequest> requestQueue =
-            new PriorityBlockingQueue<AllocateRequest>();
+    private final ConcurrentMap<String, AllocateRequest> requestTable = new ConcurrentHashMap<>();
+    private final PriorityBlockingQueue<AllocateRequest> requestQueue = new PriorityBlockingQueue<>();
     private volatile boolean hasException = false;
-    private DefaultMessageStore messageStore;
+    private final DefaultMessageStore messageStore;
 
     public AllocateMappedFileService(DefaultMessageStore messageStore) {
         this.messageStore = messageStore;

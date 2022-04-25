@@ -31,6 +31,15 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * 内存映射文件
+ * 未开启写缓冲时:
+ * start--------flush-----write-----end
+ * 写入时累加write、刷盘时flush追赶write
+ * 开启写缓冲时:
+ * start--------flush------commit-------write------end
+ * 写入时写入writeBuffer并累加write
+ * 提交时将writeBuffer上次commit(还未更新的当前、commit上次提交时的write)到现在write位置数据写入真实文件的channel并使commit = write
+ * 刷盘时start到commit位置写入磁盘、使 flush = commit
+ * commit追赶write、flush追赶commit
  */
 @NoArgsConstructor
 public class MappedFile extends ReferenceResource {
@@ -70,7 +79,7 @@ public class MappedFile extends ReferenceResource {
     private File file;
 
     /**
-     * 原始文件channel
+     * 文件channel 【开启写缓冲读写分离时写文件】
      */
     @Getter
     protected FileChannel fileChannel;
@@ -81,7 +90,7 @@ public class MappedFile extends ReferenceResource {
     protected TransientStorePool transientStorePool = null;
 
     /**
-     * 写缓冲 避免mappedByteBuffer被频繁读写
+     * 写缓冲 【写入缓冲后批量再刷入文件mappedByteBuffer仅做读取的读写分离、避免mappedByteBuffer被频繁读写】
      * Message will put to here first, and then reput to FileChannel if writeBuffer is not null.
      */
     protected ByteBuffer writeBuffer = null;
@@ -101,9 +110,8 @@ public class MappedFile extends ReferenceResource {
      */
     private final AtomicInteger flushedPosition = new AtomicInteger(0);
 
-
     /**
-     *
+     * 文件起始commitlogoffset位置 【文件名】
      */
     @Getter
     private long fileFromOffset;
@@ -121,13 +129,13 @@ public class MappedFile extends ReferenceResource {
     private volatile long storeTimestamp = 0;
 
     /**
-     *
+     * 该映射文件是否在映射queue中
      */
     @Getter
     @Setter
     private boolean firstCreateInQueue = false;
 
-    //region 初始化 【映射文件到虚拟内存、设置写缓冲buffer&写缓冲池】
+    //region 初始化 【映射文件到虚拟内存、设置写缓冲buffer&写缓冲池&文件channel】
     public MappedFile(String fileName, int fileSize) throws IOException {
         init(fileName, fileSize);
     }
@@ -173,13 +181,15 @@ public class MappedFile extends ReferenceResource {
 
     //region 清理映射内存
     public static void clean(final ByteBuffer buffer) {
-        if (buffer == null || !buffer.isDirect() || buffer.capacity() == 0)
+        if (buffer == null || !buffer.isDirect() || buffer.capacity() == 0) {
             return;
+        }
         invoke(invoke(viewed(buffer), "cleaner"), "clean");
     }
 
     private static Object invoke(final Object target, final String methodName, final Class<?>... args) {
         return AccessController.doPrivileged(new PrivilegedAction<Object>() {
+            @Override
             public Object run() {
                 try {
                     Method method = method(target, methodName, args);
@@ -212,10 +222,11 @@ public class MappedFile extends ReferenceResource {
         }
 
         ByteBuffer viewedBuffer = (ByteBuffer) invoke(buffer, methodName);
-        if (viewedBuffer == null)
+        if (viewedBuffer == null) {
             return buffer;
-        else
+        } else {
             return viewed(viewedBuffer);
+        }
     }
     //endregion
 
@@ -263,12 +274,15 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 追加批量消息到文件
+     * 追加批量消息
      */
     public AppendMessageResult appendMessages(final MessageExtBatch messageExtBatch, final AppendMessageCallback cb) {
         return appendMessagesInner(messageExtBatch, cb);
     }
 
+    /**
+     * 追加写入消息
+     */
     public AppendMessageResult appendMessagesInner(MessageExt messageExt, AppendMessageCallback cb) {
         assert messageExt != null;
         assert cb != null;
@@ -319,12 +333,9 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * Content of data from offset to offset + length will be wrote to file.
-     *
-     * @param offset The offset of the subarray to be used.
-     * @param length The length of the subarray to be used.
+     * 追加指定长度数据到文件指定offset
      */
-    public boolean appendMessage(final byte[] data, final int offset, final int length) {
+    public boolean appendMessage(byte[] data, int offset, int length) {
         int currentPos = this.wrotePosition.get();
 
         if ((currentPos + length) <= this.fileSize) {
@@ -348,10 +359,9 @@ public class MappedFile extends ReferenceResource {
     public int flush(final int flushLeastPages) {
         //判断脏页数
         if (this.isAbleToFlush(flushLeastPages)) {
-            //防止刷盘时buffer被释放
             if (this.hold()) {
                 int value = getReadPosition();
-
+                //写缓冲模式将文件channel中的堆数据刷盘、映射文件将映射文件中脏页刷盘
                 try {
                     //We only append data to fileChannel or mappedByteBuffer, never both.
                     if (writeBuffer != null || this.fileChannel.position() != 0) {
@@ -373,16 +383,20 @@ public class MappedFile extends ReferenceResource {
         return this.getFlushedPosition();
     }
 
+    //region 提交写缓冲 至少存在commitLeastPages页脏页
+
     /**
-     * 提交写缓冲 至少存在多少脏页进行提交
+     * 未提交脏页数检查 & 归还写缓冲【文件写满时】
      */
     public int commit(int commitLeastPages) {
+        //未使用写缓冲时无需提交 write位置前数据已全部在原始文件脏页中
         if (writeBuffer == null) {
             //no need to commit data to file channel, so just regard wrotePosition as committedPosition.
             return this.wrotePosition.get();
         }
         if (this.isAbleToCommit(commitLeastPages)) {
             if (this.hold()) {
+                //提交
                 commit0(commitLeastPages);
                 this.release();
             } else {
@@ -390,15 +404,20 @@ public class MappedFile extends ReferenceResource {
             }
         }
 
+        //region 文件已写满无需写缓冲归还到缓冲池
         // All dirty data has been committed to FileChannel.
         if (writeBuffer != null && this.transientStorePool != null && this.fileSize == this.committedPosition.get()) {
             this.transientStorePool.returnBuffer(writeBuffer);
             this.writeBuffer = null;
         }
+        //endregion
 
         return this.committedPosition.get();
     }
 
+    /**
+     * 提交数据 【将写缓冲中commit到write数据写入原始文件文件channel的堆内存中、并更新commit = write】
+     */
     protected void commit0(final int commitLeastPages) {
         int writePos = this.wrotePosition.get();
         int lastCommittedPosition = this.committedPosition.get();
@@ -416,7 +435,11 @@ public class MappedFile extends ReferenceResource {
             }
         }
     }
+    //endregion
 
+    /**
+     * 是否可以刷盘 【至少存在flushLeastPages页脏页、开启写缓冲时脏页区间上限为commit、commit到write还在写缓冲中】
+     */
     private boolean isAbleToFlush(final int flushLeastPages) {
         int flush = this.flushedPosition.get();
         int write = getReadPosition();
@@ -433,7 +456,7 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 能否提交 【至少存在commitLeastPages页未刷新数据】
+     * 能否提交 【至少存在commitLeastPages页未提交到原始文件中、(write - commit)/pagesize > commitLeastPages】
      * 此时
      */
     protected boolean isAbleToCommit(final int commitLeastPages) {
@@ -472,6 +495,38 @@ public class MappedFile extends ReferenceResource {
         return this.fileSize == this.wrotePosition.get();
     }
 
+    /**
+     * 获取当前写入位置
+     */
+    public int getWrotePosition() {
+        return wrotePosition.get();
+    }
+
+    /**
+     * 设置当前写入位置
+     */
+    public void setWrotePosition(int pos) {
+        this.wrotePosition.set(pos);
+    }
+
+    /**
+     * 映射文件中读写指针指向位置
+     * The max position which have valid data
+     */
+    public int getReadPosition() {
+        return this.writeBuffer == null ? this.wrotePosition.get() : this.committedPosition.get();
+    }
+
+    /**
+     * 设置提交位置
+     */
+    public void setCommittedPosition(int pos) {
+        this.committedPosition.set(pos);
+    }
+
+    /**
+     * 查询指定位置指定大小数据 【返回原映射文件切片】
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos, int size) {
         int readPosition = getReadPosition();
         if ((pos + size) <= readPosition) {
@@ -493,6 +548,9 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    /**
+     * 查询指定位置所有数据 【返回原映射文件切片】
+     */
     public SelectMappedBufferResult selectMappedBuffer(int pos) {
         int readPosition = getReadPosition();
         if (pos < readPosition && pos >= 0) {
@@ -509,6 +567,9 @@ public class MappedFile extends ReferenceResource {
         return null;
     }
 
+    /**
+     * 清理映射内存并重置部分状态统计值
+     */
     @Override
     public boolean cleanup(final long currentRef) {
         if (this.isAvailable()) {
@@ -530,6 +591,9 @@ public class MappedFile extends ReferenceResource {
         return true;
     }
 
+    /**
+     * 清理完映射内存后关闭channel并删除文件等
+     */
     public boolean destroy(final long intervalForcibly) {
         this.shutdown(intervalForcibly);
 
@@ -558,30 +622,8 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 获取当前写入位置
+     * 预热文件 【将新创建的文件全部填0并刷盘、仅预热commitlog文件且默认关闭】
      */
-    public int getWrotePosition() {
-        return wrotePosition.get();
-    }
-
-    /**
-     * 设置当前写入位置
-     */
-    public void setWrotePosition(int pos) {
-        this.wrotePosition.set(pos);
-    }
-
-    /**
-     * @return The max position which have valid data
-     */
-    public int getReadPosition() {
-        return this.writeBuffer == null ? this.wrotePosition.get() : this.committedPosition.get();
-    }
-
-    public void setCommittedPosition(int pos) {
-        this.committedPosition.set(pos);
-    }
-
     public void warmMappedFile(FlushDiskType type, int pages) {
         long beginTime = System.currentTimeMillis();
         ByteBuffer byteBuffer = this.mappedByteBuffer.slice();
@@ -597,7 +639,7 @@ public class MappedFile extends ReferenceResource {
                 }
             }
 
-            // prevent gc
+            // prevent gc 【并不能避免GC、Thread.yield()】
             if (j % 1000 == 0) {
                 log.info("j={}, costTime={}", j, System.currentTimeMillis() - time);
                 time = System.currentTimeMillis();
@@ -621,10 +663,16 @@ public class MappedFile extends ReferenceResource {
         this.mlock();
     }
 
+    /**
+     * 返回映射文件当前位置切片
+     */
     public ByteBuffer sliceByteBuffer() {
         return this.mappedByteBuffer.slice();
     }
 
+    /**
+     * 给基于文件共享内存段加锁 禁止其他进程访问
+     */
     public void mlock() {
         final long beginTime = System.currentTimeMillis();
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
@@ -640,6 +688,9 @@ public class MappedFile extends ReferenceResource {
         }
     }
 
+    /**
+     * 内存解锁
+     */
     public void munlock() {
         final long beginTime = System.currentTimeMillis();
         final long address = ((DirectBuffer) (this.mappedByteBuffer)).address();
