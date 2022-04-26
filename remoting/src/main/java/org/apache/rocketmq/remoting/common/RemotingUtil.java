@@ -1,45 +1,31 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.remoting.common;
 
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+
 import java.io.IOException;
 import java.lang.reflect.Method;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.InetSocketAddress;
-import java.net.NetworkInterface;
-import java.net.SocketAddress;
+import java.net.*;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
 import java.nio.channels.spi.SelectorProvider;
 import java.util.ArrayList;
 import java.util.Enumeration;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+/**
+ * 原生网络NIO工具类
+ */
 public class RemotingUtil {
-    public static final String OS_NAME = System.getProperty("os.name");
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(RemotingHelper.ROCKETMQ_REMOTING);
+
+    //region 判断平台类型
     private static boolean isLinuxPlatform = false;
     private static boolean isWindowsPlatform = false;
+    public static final String OS_NAME = System.getProperty("os.name");
 
     static {
         if (OS_NAME != null && OS_NAME.toLowerCase().contains("linux")) {
@@ -55,24 +41,28 @@ public class RemotingUtil {
         return isWindowsPlatform;
     }
 
+    public static boolean isLinuxPlatform() {
+        return isLinuxPlatform;
+    }
+    //endregion
+
+    /**
+     * 打开一个网络事件selector
+     */
     public static Selector openSelector() throws IOException {
         Selector result = null;
 
         if (isLinuxPlatform()) {
             try {
                 final Class<?> providerClazz = Class.forName("sun.nio.ch.EPollSelectorProvider");
-                if (providerClazz != null) {
-                    try {
-                        final Method method = providerClazz.getMethod("provider");
-                        if (method != null) {
-                            final SelectorProvider selectorProvider = (SelectorProvider) method.invoke(null);
-                            if (selectorProvider != null) {
-                                result = selectorProvider.openSelector();
-                            }
-                        }
-                    } catch (final Exception e) {
-                        log.warn("Open ePoll Selector for linux platform exception", e);
+                try {
+                    final Method method = providerClazz.getMethod("provider");
+                    final SelectorProvider selectorProvider = (SelectorProvider) method.invoke(null);
+                    if (selectorProvider != null) {
+                        result = selectorProvider.openSelector();
                     }
+                } catch (final Exception e) {
+                    log.warn("Open ePoll Selector for linux platform exception", e);
                 }
             } catch (final Exception e) {
                 // ignore
@@ -86,16 +76,15 @@ public class RemotingUtil {
         return result;
     }
 
-    public static boolean isLinuxPlatform() {
-        return isLinuxPlatform;
-    }
-
+    /**
+     * 获取本机IP地址 【非loop地址和通用内网地址的IPv4地址优先】
+     */
     public static String getLocalAddress() {
         try {
             // Traversal Network interface to get the first non-loopback and non-private address
             Enumeration<NetworkInterface> enumeration = NetworkInterface.getNetworkInterfaces();
-            ArrayList<String> ipv4Result = new ArrayList<String>();
-            ArrayList<String> ipv6Result = new ArrayList<String>();
+            ArrayList<String> ipv4Result = new ArrayList<>();
+            ArrayList<String> ipv6Result = new ArrayList<>();
             while (enumeration.hasMoreElements()) {
                 final NetworkInterface networkInterface = enumeration.nextElement();
                 final Enumeration<InetAddress> en = networkInterface.getInetAddresses();
@@ -135,7 +124,10 @@ public class RemotingUtil {
         return null;
     }
 
-    public static String normalizeHostAddress(final InetAddress localHost) {
+    /**
+     * 格式化IP地址
+     */
+    public static String normalizeHostAddress(InetAddress localHost) {
         if (localHost instanceof Inet6Address) {
             return "[" + localHost.getHostAddress() + "]";
         } else {
@@ -143,28 +135,35 @@ public class RemotingUtil {
         }
     }
 
-    public static SocketAddress string2SocketAddress(final String addr) {
+    /**
+     * 解析字符串到SocketAddress
+     */
+    public static SocketAddress string2SocketAddress(String addr) {
         int split = addr.lastIndexOf(":");
         String host = addr.substring(0, split);
         String port = addr.substring(split + 1);
-        InetSocketAddress isa = new InetSocketAddress(host, Integer.parseInt(port));
-        return isa;
+        return new InetSocketAddress(host, Integer.parseInt(port));
     }
 
-    public static String socketAddress2String(final SocketAddress addr) {
-        StringBuilder sb = new StringBuilder();
+    /**
+     * 格式化SocketAddress
+     */
+    public static String socketAddress2String(SocketAddress addr) {
         InetSocketAddress inetSocketAddress = (InetSocketAddress) addr;
-        sb.append(inetSocketAddress.getAddress().getHostAddress());
-        sb.append(":");
-        sb.append(inetSocketAddress.getPort());
-        return sb.toString();
+        return inetSocketAddress.getAddress().getHostAddress() + ":" + inetSocketAddress.getPort();
     }
 
+    /**
+     * 与远程地址创建连接
+     */
     public static SocketChannel connect(SocketAddress remote) {
         return connect(remote, 1000 * 5);
     }
 
-    public static SocketChannel connect(SocketAddress remote, final int timeoutMillis) {
+    /**
+     * 与远程地址创建连接 【并设置超时时间】
+     */
+    public static SocketChannel connect(SocketAddress remote, int timeoutMillis) {
         SocketChannel sc = null;
         try {
             sc = SocketChannel.open();
@@ -189,13 +188,16 @@ public class RemotingUtil {
         return null;
     }
 
+    /**
+     * 关闭channel
+     */
     public static void closeChannel(Channel channel) {
         final String addrRemote = RemotingHelper.parseChannelRemoteAddr(channel);
         channel.close().addListener(new ChannelFutureListener() {
             @Override
             public void operationComplete(ChannelFuture future) throws Exception {
                 log.info("closeChannel: close the connection to remote address[{}] result: {}", addrRemote,
-                    future.isSuccess());
+                        future.isSuccess());
             }
         });
     }

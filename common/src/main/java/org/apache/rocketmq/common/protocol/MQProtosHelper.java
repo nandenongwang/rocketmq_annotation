@@ -25,9 +25,7 @@ public class MQProtosHelper {
 
         try {
             RemotingCommand response = RemotingHelper.invokeSync(nsaddr, request, timeoutMillis);
-            if (response != null) {
-                return ResponseCode.SUCCESS == response.getCode();
-            }
+            return ResponseCode.SUCCESS == response.getCode();
         } catch (Exception e) {
             log.error("Failed to register broker", e);
         }

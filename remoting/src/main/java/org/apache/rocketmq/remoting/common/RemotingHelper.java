@@ -1,29 +1,6 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.remoting.common;
 
 import io.netty.channel.Channel;
-
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.net.SocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.channels.SocketChannel;
-
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.exception.RemotingConnectException;
@@ -31,13 +8,22 @@ import org.apache.rocketmq.remoting.exception.RemotingSendRequestException;
 import org.apache.rocketmq.remoting.exception.RemotingTimeoutException;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.SocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.SocketChannel;
+
 public class RemotingHelper {
     public static final String ROCKETMQ_REMOTING = "RocketmqRemoting";
     public static final String DEFAULT_CHARSET = "UTF-8";
 
     private static final InternalLogger log = InternalLoggerFactory.getLogger(ROCKETMQ_REMOTING);
 
-    public static String exceptionSimpleDesc(final Throwable e) {
+    /**
+     * 格式化异常消息
+     */
+    public static String exceptionSimpleDesc(Throwable e) {
         StringBuilder sb = new StringBuilder();
         if (e != null) {
             sb.append(e.toString());
@@ -53,16 +39,21 @@ public class RemotingHelper {
         return sb.toString();
     }
 
-    public static SocketAddress string2SocketAddress(final String addr) {
+    /**
+     * 将如"127.0.0.1:3748"的addr解析成SocketAddress
+     */
+    public static SocketAddress string2SocketAddress(String addr) {
         int split = addr.lastIndexOf(":");
         String host = addr.substring(0, split);
         String port = addr.substring(split + 1);
         return new InetSocketAddress(host, Integer.parseInt(port));
     }
 
-    public static RemotingCommand invokeSync(final String addr, final RemotingCommand request,
-                                             final long timeoutMillis) throws InterruptedException, RemotingConnectException,
-            RemotingSendRequestException, RemotingTimeoutException {
+    /**
+     * 发送请求 【同步调用】
+     */
+    public static RemotingCommand invokeSync(String addr, RemotingCommand request, long timeoutMillis)
+            throws InterruptedException, RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException {
         long beginTime = System.currentTimeMillis();
         SocketAddress socketAddress = RemotingUtil.string2SocketAddress(addr);
         SocketChannel socketChannel = RemotingUtil.connect(socketAddress);
@@ -73,6 +64,7 @@ public class RemotingHelper {
 
                 socketChannel.configureBlocking(true);
 
+                //region 写出请求
                 //bugfix  http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=4614802
                 socketChannel.socket().setSoTimeout((int) timeoutMillis);
 
@@ -93,8 +85,11 @@ public class RemotingHelper {
                     Thread.sleep(1);
                 }
 
+                //endregion
+
                 sendRequestOK = true;
 
+                //region 读取响应长度
                 ByteBuffer byteBufferSize = ByteBuffer.allocate(4);
                 while (byteBufferSize.hasRemaining()) {
                     int length = socketChannel.read(byteBufferSize);
@@ -111,7 +106,9 @@ public class RemotingHelper {
 
                     Thread.sleep(1);
                 }
+                //endregion
 
+                //region 读取响应
                 int size = byteBufferSize.getInt(0);
                 ByteBuffer byteBufferBody = ByteBuffer.allocate(size);
                 while (byteBufferBody.hasRemaining()) {
@@ -129,9 +126,12 @@ public class RemotingHelper {
 
                     Thread.sleep(1);
                 }
-
                 byteBufferBody.flip();
+                //endregion
+
+                //region 解析返回命令响应
                 return RemotingCommand.decode(byteBufferBody);
+                //endregion
             } catch (IOException e) {
                 log.error("invokeSync failure", e);
 
@@ -152,6 +152,9 @@ public class RemotingHelper {
         }
     }
 
+    /**
+     * 获取channel远程地址
+     */
     public static String parseChannelRemoteAddr(final Channel channel) {
         if (null == channel) {
             return "";
@@ -171,6 +174,9 @@ public class RemotingHelper {
         return "";
     }
 
+    /**
+     * 解析SocketAddress地址
+     */
     public static String parseSocketAddressAddr(SocketAddress socketAddress) {
         if (socketAddress != null) {
             final String addr = socketAddress.toString();
@@ -181,5 +187,4 @@ public class RemotingHelper {
         }
         return "";
     }
-
 }
