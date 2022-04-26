@@ -51,7 +51,7 @@ public class DispatchRequest {
     private final String keys;
 
     /**
-     * 分派器处理结果
+     * 将物理日志解析成dispatchRequest解析校验结果
      */
     private final boolean success;
 

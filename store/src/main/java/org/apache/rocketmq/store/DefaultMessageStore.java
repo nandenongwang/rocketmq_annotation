@@ -579,7 +579,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     * 获取commitlog操作前锁定时间
+     * 获取commitlog页缓存锁定时间
      */
     @Override
     public long lockTimeMills() {
@@ -1138,7 +1138,7 @@ public class DefaultMessageStore implements MessageStore {
     }
 
     /**
-     * 清理未使用的topic
+     * 清理未使用的topic 【销毁consumequeue的逻辑日志并清理相关内存数据结构】
      */
     @Override
     public int cleanUnusedTopic(Set<String> topics) {
@@ -1312,6 +1312,9 @@ public class DefaultMessageStore implements MessageStore {
         return this.commitLog.getConfirmOffset();
     }
 
+    /**
+     * 设置dispatch确认进度
+     */
     @Override
     public void setConfirmOffset(long phyOffset) {
         this.commitLog.setConfirmOffset(phyOffset);
@@ -2052,6 +2055,7 @@ public class DefaultMessageStore implements MessageStore {
      * 将新的commitlog分发到各dispatcher 【写索引、写consumequeue、计算sql表达式filterbitmap】
      */
     class ReputMessageService extends ServiceThread {
+
         /**
          * dispatch开始位置 【messagestore启动时读取最大consumequeue中最大offset】
          */

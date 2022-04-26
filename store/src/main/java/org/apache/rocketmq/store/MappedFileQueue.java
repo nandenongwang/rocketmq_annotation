@@ -48,14 +48,14 @@ public class MappedFileQueue {
     private final AllocateMappedFileService allocateMappedFileService;
 
     /**
-     * 单个逻辑commitlog的刷盘offset
+     * 文件逻辑刷盘位置
      */
     @Getter
     @Setter
     private long flushedWhere = 0;
 
     /**
-     * 单个逻辑commitlog的提交offset 【仅物理日志使用写缓冲】
+     * 文件逻辑提交位置 【仅物理日志使用写缓冲】
      */
     @Getter
     @Setter

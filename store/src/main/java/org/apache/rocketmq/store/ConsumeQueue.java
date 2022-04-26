@@ -117,7 +117,9 @@ public class ConsumeQueue {
     }
 
     /**
-     *
+     * 恢复consumequeue
+     * 从倒数第三个mappedFils依次解析出消费索引项校验数据是否正常 【phyOffset&size均大于0】
+     * 根据最后一个正常数据设置该consumequeue读写、刷盘位置
      */
     public void recover() {
         final List<MappedFile> mappedFiles = this.mappedFileQueue.getMappedFiles();
@@ -562,22 +564,24 @@ public class ConsumeQueue {
     //endregion
 
     /**
-     *
+     * 获取文件逻辑offset对应的消费索引项
      */
-    public SelectMappedBufferResult getIndexBuffer(final long startIndex) {
+    public SelectMappedBufferResult getIndexBuffer(long startIndex) {
         int mappedFileSize = this.mappedFileSize;
         long offset = startIndex * CQ_STORE_UNIT_SIZE;
         if (offset >= this.getMinLogicOffset()) {
             MappedFile mappedFile = this.mappedFileQueue.findMappedFileByOffset(offset);
             if (mappedFile != null) {
-                SelectMappedBufferResult result = mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
-                return result;
+                return mappedFile.selectMappedBuffer((int) (offset % mappedFileSize));
             }
         }
         return null;
     }
 
-    public ConsumeQueueExt.CqExtUnit getExt(final long offset) {
+    /**
+     * 获取指定offset的消息扩展段
+     */
+    public ConsumeQueueExt.CqExtUnit getExt(long offset) {
         if (isExtReadEnable()) {
             return this.consumeQueueExt.get(offset);
         }
@@ -595,14 +599,17 @@ public class ConsumeQueue {
     }
 
     /**
-     *
+     * 获取指定逻辑index下一个文件的起始逻辑index
      */
-    public long rollNextFile(final long index) {
+    public long rollNextFile(long index) {
         int mappedFileSize = this.mappedFileSize;
         int totalUnitsInFile = mappedFileSize / CQ_STORE_UNIT_SIZE;
         return index + totalUnitsInFile - index % totalUnitsInFile;
     }
 
+    /**
+     * 销毁consumequeue 【重置日志offset并销毁映射文件和扩展存储】
+     */
     public void destroy() {
         this.maxPhysicOffset = -1;
         this.minLogicOffset = 0;

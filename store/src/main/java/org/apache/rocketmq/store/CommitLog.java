@@ -75,7 +75,7 @@ public class CommitLog {
     protected HashMap<String/* topic-queueId */, Long/* offset */> topicQueueTable = new HashMap<>(1024);
 
     /**
-     * dispatch消息确认进度【已未使用】
+     * dispatch消息确认进度【已未使用、reput时由reputFromOffset确认进度】
      */
     @Getter
     @Setter

@@ -1,33 +1,38 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.store;
+
+import lombok.Getter;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 引用资源
+ */
 public abstract class ReferenceResource {
-    //被引用次数
+
+    /**
+     * 被引用次数
+     */
     protected final AtomicLong refCount = new AtomicLong(1);
-    //是否可用
+
+    /**
+     * 是否可用
+     */
+    @Getter
     protected volatile boolean available = true;
-    //是否被清理
+
+    /**
+     * 是否被清理
+     */
     protected volatile boolean cleanupOver = false;
-    //首次关闭时间
+
+    /**
+     * 首次关闭时间
+     */
     private volatile long firstShutdownTimestamp = 0;
 
+    /**
+     * 增加引用
+     */
     public synchronized boolean hold() {
         if (this.isAvailable()) {
             if (this.refCount.getAndIncrement() > 0) {
@@ -40,10 +45,9 @@ public abstract class ReferenceResource {
         return false;
     }
 
-    public boolean isAvailable() {
-        return this.available;
-    }
-
+    /**
+     * 关闭资源
+     */
     public void shutdown(final long intervalForcibly) {
         if (this.available) {
             this.available = false;
@@ -57,6 +61,9 @@ public abstract class ReferenceResource {
         }
     }
 
+    /**
+     * 释放引用
+     */
     public void release() {
         long value = this.refCount.decrementAndGet();
         if (value > 0) {

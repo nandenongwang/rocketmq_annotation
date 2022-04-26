@@ -1,29 +1,30 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.store;
+
+import lombok.Getter;
 
 import java.nio.ByteBuffer;
 
+/**
+ * 消息查询结果
+ */
 public class SelectMappedBufferResult {
 
+    /**
+     * 消息所在文件逻辑offset
+     */
+    @Getter
     private final long startOffset;
 
+    /**
+     * 消息位置内存映射切片
+     */
+    @Getter
     private final ByteBuffer byteBuffer;
 
+    /**
+     * 消息大小
+     */
+    @Getter
     private int size;
 
     private MappedFile mappedFile;
@@ -35,34 +36,26 @@ public class SelectMappedBufferResult {
         this.mappedFile = mappedFile;
     }
 
-    public ByteBuffer getByteBuffer() {
-        return byteBuffer;
-    }
-
-    public int getSize() {
-        return size;
-    }
-
     public void setSize(final int s) {
         this.size = s;
         this.byteBuffer.limit(this.size);
     }
 
-//    @Override
-//    protected void finalize() {
-//        if (this.mappedFile != null) {
-//            this.release();
-//        }
-//    }
+    @Override
+    @Deprecated
+    protected void finalize() {
+        if (this.mappedFile != null) {
+            this.release();
+        }
+    }
 
+    /**
+     * 释放该结果对映射文件的引用
+     */
     public synchronized void release() {
         if (this.mappedFile != null) {
             this.mappedFile.release();
             this.mappedFile = null;
         }
-    }
-
-    public long getStartOffset() {
-        return startOffset;
     }
 }

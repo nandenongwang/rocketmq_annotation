@@ -19,9 +19,24 @@ import java.util.concurrent.ConcurrentLinkedDeque;
 public class TransientStorePool {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.STORE_LOGGER_NAME);
 
+    /**
+     * 缓冲池大小
+     */
     private final int poolSize;
+
+    /**
+     * 原始文件大小
+     */
     private final int fileSize;
+
+    /**
+     * 可用缓冲buffer
+     */
     private final Deque<ByteBuffer> availableBuffers;
+
+    /**
+     * 存储配置
+     */
     private final MessageStoreConfig storeConfig;
 
     public TransientStorePool(final MessageStoreConfig storeConfig) {
@@ -32,6 +47,8 @@ public class TransientStorePool {
     }
 
     /**
+     * 初始化缓冲池
+     * 新建缓冲池大小个内存等于的原始文件大小的直接内存加入写缓冲池队列、并锁住内存块不让其他进程操作
      * It's a heavy init method.
      */
     public void init() {
@@ -46,6 +63,9 @@ public class TransientStorePool {
         }
     }
 
+    /**
+     * 销毁所有缓冲块
+     */
     public void destroy() {
         for (ByteBuffer byteBuffer : availableBuffers) {
             final long address = ((DirectBuffer) byteBuffer).address();
@@ -54,12 +74,18 @@ public class TransientStorePool {
         }
     }
 
+    /**
+     * 归还一个缓冲buffer
+     */
     public void returnBuffer(ByteBuffer byteBuffer) {
         byteBuffer.position(0);
         byteBuffer.limit(fileSize);
         this.availableBuffers.offerFirst(byteBuffer);
     }
 
+    /**
+     * 借出一个缓冲buffer
+     */
     public ByteBuffer borrowBuffer() {
         ByteBuffer buffer = availableBuffers.pollFirst();
         if (availableBuffers.size() < poolSize * 0.4) {
@@ -68,6 +94,9 @@ public class TransientStorePool {
         return buffer;
     }
 
+    /**
+     * 空闲缓冲块数量
+     */
     public int availableBufferNums() {
         if (storeConfig.isTransientStorePoolEnable()) {
             return availableBuffers.size();
