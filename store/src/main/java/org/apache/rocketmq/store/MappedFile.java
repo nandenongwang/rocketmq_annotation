@@ -623,7 +623,7 @@ public class MappedFile extends ReferenceResource {
     }
 
     /**
-     * 预热文件 【将新创建的文件全部填0并刷盘、仅预热commitlog文件且默认关闭】
+     * 预热文件 【将新创建的文件全部填0并刷盘、仅commitlog使用且默认关闭】
      */
     public void warmMappedFile(FlushDiskType type, int pages) {
         long beginTime = System.currentTimeMillis();
