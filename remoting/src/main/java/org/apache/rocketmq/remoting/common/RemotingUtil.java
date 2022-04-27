@@ -16,7 +16,7 @@ import java.util.ArrayList;
 import java.util.Enumeration;
 
 /**
- * 原生网络NIO工具类
+ * 网络NIO工具类
  */
 public class RemotingUtil {
 

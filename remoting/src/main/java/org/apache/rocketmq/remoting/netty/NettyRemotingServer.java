@@ -67,7 +67,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     private DefaultEventExecutorGroup defaultEventExecutorGroup;
 
     /**
-     * 命令处理线程池 【默认4、处理远程命令】
+     * 命令公用处理线程池 【默认4、处理远程命令】
      */
     private final ExecutorService publicExecutor;
 
@@ -78,15 +78,21 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
 
     /**
-     *
+     * 事件监听器 【用于连接管理】
      */
     private final ChannelEventListener channelEventListener;
 
+    /**
+     * 超时请求定时扫描调度
+     */
     private final Timer timer = new Timer("ServerHouseKeepingService", true);
 
-
+    /**
+     * Socket监听端口 默认8888
+     */
     private int port = 0;
 
+    //region netty处理handler
     private static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
     private static final String TLS_HANDLER_NAME = "sslHandler";
     private static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
@@ -96,6 +102,8 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     private NettyEncoder encoder;
     private NettyConnectManageHandler connectionManageHandler;
     private NettyServerHandler serverHandler;
+    //endregion
+
 
     public NettyRemotingServer(final NettyServerConfig nettyServerConfig) {
         this(nettyServerConfig, null);
@@ -107,6 +115,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         this.nettyServerConfig = nettyServerConfig;
         this.channelEventListener = channelEventListener;
 
+        //region 初始化命令执行线程池 默认4
         int publicThreadNums = nettyServerConfig.getServerCallbackExecutorThreads();
         if (publicThreadNums <= 0) {
             publicThreadNums = 4;
@@ -120,7 +129,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 return new Thread(r, "NettyServerPublicExecutor_" + this.threadIndex.incrementAndGet());
             }
         });
+        //endregion
 
+        //region 根据是否使用epool初始化不同类型的netty接受连接&选择事件线程池 默认1、3
         if (useEpoll()) {
             this.eventLoopGroupBoss = new EpollEventLoopGroup(1, new ThreadFactory() {
                 private final AtomicInteger threadIndex = new AtomicInteger(0);
@@ -160,6 +171,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 }
             });
         }
+        //endregion
 
         loadSslContext();
     }
@@ -180,6 +192,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 是否使用epool 【Linux系统&开启使用epool配置&epool可用】
+     */
     private boolean useEpoll() {
         return RemotingUtil.isLinuxPlatform()
                 && nettyServerConfig.isUseEpollNativeSelector()
@@ -188,6 +203,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
 
     @Override
     public void start() {
+        //region 初始化默认事件处理线程池
         this.defaultEventExecutorGroup = new DefaultEventExecutorGroup(
                 nettyServerConfig.getServerWorkerThreads(),
                 new ThreadFactory() {
@@ -199,9 +215,13 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                         return new Thread(r, "NettyServerCodecThread_" + this.threadIndex.incrementAndGet());
                     }
                 });
+        //endregion
 
+        //region 实例化各使用的netty处理器
         prepareSharableHandlers();
+        //endregion
 
+        //region netty启动模版代码
         ServerBootstrap childHandler =
                 this.serverBootstrap.group(this.eventLoopGroupBoss, this.eventLoopGroupSelector)
                         .channel(useEpoll() ? EpollServerSocketChannel.class : NioServerSocketChannel.class)
@@ -238,11 +258,15 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         } catch (InterruptedException e1) {
             throw new RuntimeException("this.serverBootstrap.bind().sync() InterruptedException", e1);
         }
+        //endregion
 
+        //region 启动管理事件监听线程
         if (this.channelEventListener != null) {
             this.nettyEventExecutor.start();
         }
+        //endregion
 
+        //region 清理超时请求、并处理异步调用回调定时任务
         this.timer.scheduleAtFixedRate(new TimerTask() {
 
             @Override
@@ -254,6 +278,7 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
                 }
             }
         }, 1000 * 3, 1000);
+        //endregion
     }
 
     @Override
@@ -352,6 +377,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         serverHandler = new NettyServerHandler();
     }
 
+    /**
+     * tls处理handler
+     */
     @ChannelHandler.Sharable
     class HandshakeHandler extends SimpleChannelInboundHandler<ByteBuf> {
 
@@ -415,6 +443,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 命令处理handler
+     */
     @ChannelHandler.Sharable
     class NettyServerHandler extends SimpleChannelInboundHandler<RemotingCommand> {
 
@@ -424,6 +455,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
         }
     }
 
+    /**
+     * 连接管理handler
+     */
     @ChannelHandler.Sharable
     class NettyConnectManageHandler extends ChannelDuplexHandler {
         @Override
