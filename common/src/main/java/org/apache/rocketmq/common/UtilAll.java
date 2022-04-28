@@ -1,20 +1,11 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.common;
+
+import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.InetAddressValidator;
+import org.apache.rocketmq.common.constant.LoggerName;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
 
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -29,23 +20,14 @@ import java.net.NetworkInterface;
 import java.text.NumberFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Date;
-import java.util.Enumeration;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.zip.CRC32;
 import java.util.zip.DeflaterOutputStream;
 import java.util.zip.InflaterInputStream;
-import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.validator.routines.InetAddressValidator;
-import org.apache.rocketmq.common.constant.LoggerName;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
-import org.apache.rocketmq.remoting.common.RemotingHelper;
 
+/**
+ * 工具类
+ */
 public class UtilAll {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
@@ -54,6 +36,9 @@ public class UtilAll {
     public static final String YYYYMMDDHHMMSS = "yyyyMMddHHmmss";
     final static char[] HEX_ARRAY = "0123456789ABCDEF".toCharArray();
 
+    /**
+     * 获取当前进程PID
+     */
     public static int getPid() {
         RuntimeMXBean runtime = ManagementFactory.getRuntimeMXBean();
         String name = runtime.getName(); // format: "pid@hostname"
@@ -64,6 +49,9 @@ public class UtilAll {
         }
     }
 
+    /**
+     * 当前线程睡眠指定时间
+     */
     public static void sleep(long sleepMs) {
         if (sleepMs < 0) {
             return;
@@ -76,6 +64,9 @@ public class UtilAll {
 
     }
 
+    /**
+     * 获取当前线程调用堆栈
+     */
     public static String currentStackTrace() {
         StringBuilder sb = new StringBuilder();
         StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
@@ -87,18 +78,30 @@ public class UtilAll {
         return sb.toString();
     }
 
+    /**
+     * 将offset转换成文件名 【commitlog和consumequeue使用】
+     */
     public static String offset2FileName(final long offset) {
         final NumberFormat nf = NumberFormat.getInstance();
+        //设置整数部分占用多少位
         nf.setMinimumIntegerDigits(20);
+        //设置小数部分占用多少位
         nf.setMaximumFractionDigits(0);
+        //设置输出格式是否使用“,”分组,这里不使用
         nf.setGroupingUsed(false);
         return nf.format(offset);
     }
 
+    /**
+     * 计算当前时间与指定开始时间耗时
+     */
     public static long computeElapsedTimeMilliseconds(final long beginTime) {
         return System.currentTimeMillis() - beginTime;
     }
 
+    /**
+     * 当前时间小时数是否在指定时间串中 【清理文件用，如4:6:8】
+     */
     public static boolean isItTimeToDo(final String when) {
         String[] whiles = when.split(";");
         if (whiles.length > 0) {
@@ -114,18 +117,58 @@ public class UtilAll {
         return false;
     }
 
+    /**
+     * 格式化输出当前时间戳
+     */
     public static String timeMillisToHumanString() {
         return timeMillisToHumanString(System.currentTimeMillis());
     }
 
+    /**
+     * 格式化毫秒时间、如: 20220101000000000
+     */
     public static String timeMillisToHumanString(final long t) {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(t);
         return String.format("%04d%02d%02d%02d%02d%02d%03d", cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1,
-            cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND),
-            cal.get(Calendar.MILLISECOND));
+                cal.get(Calendar.DAY_OF_MONTH), cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND),
+                cal.get(Calendar.MILLISECOND));
     }
 
+    /**
+     * 格式化毫秒时间、如: 2022-01-01 00:00:00,000
+     */
+    public static String timeMillisToHumanString2(final long t) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(t);
+        return String.format("%04d-%02d-%02d %02d:%02d:%02d,%03d",
+                cal.get(Calendar.YEAR),
+                cal.get(Calendar.MONTH) + 1,
+                cal.get(Calendar.DAY_OF_MONTH),
+                cal.get(Calendar.HOUR_OF_DAY),
+                cal.get(Calendar.MINUTE),
+                cal.get(Calendar.SECOND),
+                cal.get(Calendar.MILLISECOND));
+    }
+
+    /**
+     * 格式化毫秒时间、如: 20220101000000
+     */
+    public static String timeMillisToHumanString3(final long t) {
+        Calendar cal = Calendar.getInstance();
+        cal.setTimeInMillis(t);
+        return String.format("%04d%02d%02d%02d%02d%02d",
+                cal.get(Calendar.YEAR),
+                cal.get(Calendar.MONTH) + 1,
+                cal.get(Calendar.DAY_OF_MONTH),
+                cal.get(Calendar.HOUR_OF_DAY),
+                cal.get(Calendar.MINUTE),
+                cal.get(Calendar.SECOND));
+    }
+
+    /**
+     * 获取明天开始时间
+     */
     public static long computeNextMorningTimeMillis() {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(System.currentTimeMillis());
@@ -138,6 +181,9 @@ public class UtilAll {
         return cal.getTimeInMillis();
     }
 
+    /**
+     * 获取下一分钟开始时间
+     */
     public static long computeNextMinutesTimeMillis() {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(System.currentTimeMillis());
@@ -150,6 +196,9 @@ public class UtilAll {
         return cal.getTimeInMillis();
     }
 
+    /**
+     * 获取下一小时开始时间
+     */
     public static long computeNextHourTimeMillis() {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(System.currentTimeMillis());
@@ -162,6 +211,9 @@ public class UtilAll {
         return cal.getTimeInMillis();
     }
 
+    /**
+     * 获取下一个半小时开始时间
+     */
     public static long computeNextHalfHourTimeMillis() {
         Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(System.currentTimeMillis());
@@ -174,31 +226,9 @@ public class UtilAll {
         return cal.getTimeInMillis();
     }
 
-    public static String timeMillisToHumanString2(final long t) {
-        Calendar cal = Calendar.getInstance();
-        cal.setTimeInMillis(t);
-        return String.format("%04d-%02d-%02d %02d:%02d:%02d,%03d",
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH) + 1,
-            cal.get(Calendar.DAY_OF_MONTH),
-            cal.get(Calendar.HOUR_OF_DAY),
-            cal.get(Calendar.MINUTE),
-            cal.get(Calendar.SECOND),
-            cal.get(Calendar.MILLISECOND));
-    }
-
-    public static String timeMillisToHumanString3(final long t) {
-        Calendar cal = Calendar.getInstance();
-        cal.setTimeInMillis(t);
-        return String.format("%04d%02d%02d%02d%02d%02d",
-            cal.get(Calendar.YEAR),
-            cal.get(Calendar.MONTH) + 1,
-            cal.get(Calendar.DAY_OF_MONTH),
-            cal.get(Calendar.HOUR_OF_DAY),
-            cal.get(Calendar.MINUTE),
-            cal.get(Calendar.SECOND));
-    }
-
+    /**
+     * 获取指定路径所在磁盘使用率
+     */
     public static double getDiskPartitionSpaceUsedPercent(final String path) {
         if (null == path || path.isEmpty()) {
             log.error("Error when measuring disk space usage, path is null or empty, path : {}", path);
@@ -231,6 +261,9 @@ public class UtilAll {
         return -1;
     }
 
+    /**
+     * 计算byte[]的crc32校验值
+     */
     public static int crc32(byte[] array) {
         if (array != null) {
             return crc32(array, 0, array.length);
@@ -239,12 +272,18 @@ public class UtilAll {
         return 0;
     }
 
+    /**
+     * 计算byte[]指定位置区段的crc32校验值
+     */
     public static int crc32(byte[] array, int offset, int length) {
         CRC32 crc32 = new CRC32();
         crc32.update(array, offset, length);
         return (int) (crc32.getValue() & 0x7FFFFFFF);
     }
 
+    /**
+     * 将byte[]转换成16进制字符串
+     */
     public static String bytes2string(byte[] src) {
         char[] hexChars = new char[src.length * 2];
         for (int j = 0; j < src.length; j++) {
@@ -255,8 +294,11 @@ public class UtilAll {
         return new String(hexChars);
     }
 
+    /**
+     * 16进制字符串转换成byte[]
+     */
     public static byte[] string2bytes(String hexString) {
-        if (hexString == null || hexString.equals("")) {
+        if (hexString == null || "".equals(hexString)) {
             return null;
         }
         hexString = hexString.toUpperCase();
@@ -270,10 +312,16 @@ public class UtilAll {
         return d;
     }
 
+    /**
+     * 16进制字符转换成对应10进制整数的byte值
+     */
     private static byte charToByte(char c) {
         return (byte) "0123456789ABCDEF".indexOf(c);
     }
 
+    /**
+     * 解压byte[]
+     */
     public static byte[] uncompress(final byte[] src) throws IOException {
         byte[] result = src;
         byte[] uncompressData = new byte[src.length];
@@ -314,6 +362,9 @@ public class UtilAll {
         return result;
     }
 
+    /**
+     * 指定压缩等级压缩指定byte[]
+     */
     public static byte[] compress(final byte[] src, final int level) throws IOException {
         byte[] result = src;
         ByteArrayOutputStream byteArrayOutputStream = new ByteArrayOutputStream(src.length);
@@ -339,6 +390,9 @@ public class UtilAll {
         return result;
     }
 
+    /**
+     * 字符串转化成Int
+     */
     public static int asInt(String str, int defaultValue) {
         try {
             return Integer.parseInt(str);
@@ -347,6 +401,9 @@ public class UtilAll {
         }
     }
 
+    /**
+     * 字符串转化成Long
+     */
     public static long asLong(String str, long defaultValue) {
         try {
             return Long.parseLong(str);
@@ -355,11 +412,17 @@ public class UtilAll {
         }
     }
 
+    /**
+     * 按指定format格式化日期
+     */
     public static String formatDate(Date date, String pattern) {
         SimpleDateFormat df = new SimpleDateFormat(pattern);
         return df.format(date);
     }
 
+    /**
+     * 按指定format解析日期字符串
+     */
     public static Date parseDate(String date, String pattern) {
         SimpleDateFormat df = new SimpleDateFormat(pattern);
         try {
@@ -369,10 +432,16 @@ public class UtilAll {
         }
     }
 
+    /**
+     * 数字响应码转字符串
+     */
     public static String responseCode2String(final int code) {
         return Integer.toString(code);
     }
 
+    /**
+     * 获取字符串前size字符子串
+     */
     public static String frontStringAtLeast(final String str, final int size) {
         if (str != null) {
             if (str.length() > size) {
@@ -383,6 +452,9 @@ public class UtilAll {
         return str;
     }
 
+    /**
+     * 字符串是否为空
+     */
     public static boolean isBlank(String str) {
         int strLen;
         if (str == null || (strLen = str.length()) == 0) {
@@ -396,16 +468,20 @@ public class UtilAll {
         return true;
     }
 
+    /**
+     * 打印所有线程堆栈信息
+     */
     public static String jstack() {
         return jstack(Thread.getAllStackTraces());
     }
 
+    /**
+     * 打印指定线程堆栈信息
+     */
     public static String jstack(Map<Thread, StackTraceElement[]> map) {
         StringBuilder result = new StringBuilder();
         try {
-            Iterator<Map.Entry<Thread, StackTraceElement[]>> ite = map.entrySet().iterator();
-            while (ite.hasNext()) {
-                Map.Entry<Thread, StackTraceElement[]> entry = ite.next();
+            for (Map.Entry<Thread, StackTraceElement[]> entry : map.entrySet()) {
                 StackTraceElement[] elements = entry.getValue();
                 Thread thread = entry.getKey();
                 if (elements != null && elements.length > 0) {
@@ -424,6 +500,9 @@ public class UtilAll {
         return result.toString();
     }
 
+    /**
+     * 是否是内网IP 【是否是192.168.*.*、172.16-32.*.*网段】
+     */
     public static boolean isInternalIP(byte[] ip) {
         if (ip.length != 4) {
             throw new RuntimeException("illegal ipv4 bytes");
@@ -436,36 +515,39 @@ public class UtilAll {
 
             return true;
         } else if (ip[0] == (byte) 172) {
-            if (ip[1] >= (byte) 16 && ip[1] <= (byte) 31) {
-                return true;
-            }
+            return ip[1] >= (byte) 16 && ip[1] <= (byte) 31;
         } else if (ip[0] == (byte) 192) {
-            if (ip[1] == (byte) 168) {
-                return true;
-            }
+            return ip[1] == (byte) 168;
         }
         return false;
     }
 
+    /**
+     * 是否是内网IPv6地址
+     */
     public static boolean isInternalV6IP(InetAddress inetAddr) {
-        if (inetAddr.isAnyLocalAddress() // Wild card ipv6
-            || inetAddr.isLinkLocalAddress() // Single broadcast ipv6 address: fe80:xx:xx...
-            || inetAddr.isLoopbackAddress() //Loopback ipv6 address
-            || inetAddr.isSiteLocalAddress()) { // Site local ipv6 address: fec0:xx:xx...
-            return true;
-        }
-        return false;
+        // Site local ipv6 address: fec0:xx:xx...
+        return inetAddr.isAnyLocalAddress() // Wild card ipv6
+                || inetAddr.isLinkLocalAddress() // Single broadcast ipv6 address: fe80:xx:xx...
+                || inetAddr.isLoopbackAddress() //Loopback ipv6 address
+                || inetAddr.isSiteLocalAddress();
     }
 
+    /**
+     * 是否是IP地址
+     */
     private static boolean ipCheck(byte[] ip) {
         if (ip.length != 4) {
             throw new RuntimeException("illegal ipv4 bytes");
         }
-    
+
         InetAddressValidator validator = InetAddressValidator.getInstance();
         return validator.isValidInet4Address(ipToIPv4Str(ip));
     }
 
+    /**
+     * 是否是IPv6地址
+     */
     private static boolean ipV6Check(byte[] ip) {
         if (ip.length != 16) {
             throw new RuntimeException("illegal ipv6 bytes");
@@ -475,15 +557,21 @@ public class UtilAll {
         return validator.isValidInet6Address(ipToIPv6Str(ip));
     }
 
+    /**
+     * ip地址数据格式转换 byte[]到普通IPv4地址格式
+     */
     public static String ipToIPv4Str(byte[] ip) {
         if (ip.length != 4) {
             return null;
         }
         return new StringBuilder().append(ip[0] & 0xFF).append(".").append(
-            ip[1] & 0xFF).append(".").append(ip[2] & 0xFF)
-            .append(".").append(ip[3] & 0xFF).toString();
+                ip[1] & 0xFF).append(".").append(ip[2] & 0xFF)
+                .append(".").append(ip[3] & 0xFF).toString();
     }
 
+    /**
+     * ip地址数据格式转换 byte[]到普通IPv6地址格式
+     */
     public static String ipToIPv6Str(byte[] ip) {
         if (ip.length != 16) {
             return null;
@@ -503,6 +591,9 @@ public class UtilAll {
         return sb.toString();
     }
 
+    /**
+     * 遍历所有网卡获取本机IP 【IPv4优先、非内网地址优先】
+     */
     public static byte[] getIP() {
         try {
             Enumeration allNetInterfaces = NetworkInterface.getNetworkInterfaces();
@@ -546,6 +637,9 @@ public class UtilAll {
         }
     }
 
+    /**
+     * 删除文件或目录
+     */
     public static void deleteFile(File file) {
         if (!file.exists()) {
             return;
@@ -561,6 +655,9 @@ public class UtilAll {
         }
     }
 
+    /**
+     * 通过分隔符连接list成字符串
+     */
     public static String list2String(List<String> list, String splitor) {
         if (list == null || list.size() == 0) {
             return null;
@@ -576,6 +673,9 @@ public class UtilAll {
         return str.toString();
     }
 
+    /**
+     * 通过分隔符分割字符串成list
+     */
     public static List<String> string2List(String str, String splitor) {
         if (StringUtils.isEmpty(str)) {
             return null;
