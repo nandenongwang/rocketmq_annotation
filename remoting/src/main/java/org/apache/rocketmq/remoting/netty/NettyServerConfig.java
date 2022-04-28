@@ -67,4 +67,9 @@ public class NettyServerConfig implements Cloneable {
      * --host=x86_64-linux-gnu \ --build=x86_64-pc-linux-gnu \ --without-gd
      */
     private boolean useEpollNativeSelector = false;
+
+    @Override
+    public Object clone() throws CloneNotSupportedException {
+        return super.clone();
+    }
 }

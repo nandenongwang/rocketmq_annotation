@@ -249,8 +249,7 @@ public class DefaultMQAdminExt extends ClientConfig implements MQAdminExt {
     }
 
     @Override
-    public TopicRouteData examineTopicRouteInfo(
-        String topic) throws RemotingException, MQClientException, InterruptedException {
+    public TopicRouteData examineTopicRouteInfo(String topic) throws RemotingException, MQClientException, InterruptedException {
         return defaultMQAdminExtImpl.examineTopicRouteInfo(topic);
     }
 

@@ -1,27 +1,6 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.namesrv.processor;
 
 import io.netty.channel.ChannelHandlerContext;
-
-import java.io.UnsupportedEncodingException;
-import java.util.Properties;
-import java.util.concurrent.atomic.AtomicLong;
-
 import org.apache.rocketmq.common.DataVersion;
 import org.apache.rocketmq.common.MQVersion;
 import org.apache.rocketmq.common.MQVersion.Version;
@@ -29,8 +8,6 @@ import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.help.FAQUrl;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.common.namesrv.NamesrvUtil;
 import org.apache.rocketmq.common.namesrv.RegisterBrokerResult;
 import org.apache.rocketmq.common.protocol.RequestCode;
@@ -38,21 +15,10 @@ import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.body.RegisterBrokerBody;
 import org.apache.rocketmq.common.protocol.body.TopicConfigSerializeWrapper;
 import org.apache.rocketmq.common.protocol.header.GetTopicsByClusterRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.DeleteKVConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.DeleteTopicInNamesrvRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetKVConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetKVConfigResponseHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetKVListByNamespaceRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.GetRouteInfoRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.PutKVConfigRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.QueryDataVersionRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.QueryDataVersionResponseHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.RegisterBrokerRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.RegisterBrokerResponseHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.UnRegisterBrokerRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.WipeWritePermOfBrokerRequestHeader;
-import org.apache.rocketmq.common.protocol.header.namesrv.WipeWritePermOfBrokerResponseHeader;
+import org.apache.rocketmq.common.protocol.header.namesrv.*;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.logging.InternalLogger;
+import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.namesrv.NamesrvController;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
@@ -60,8 +26,15 @@ import org.apache.rocketmq.remoting.netty.AsyncNettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+import java.io.UnsupportedEncodingException;
+import java.util.Properties;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * nameserver默认处理器
+ */
 public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
-    private static InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
+    private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.NAMESRV_LOGGER_NAME);
 
     protected final NamesrvController namesrvController;
 
@@ -79,31 +52,33 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
                     request);
         }
         switch (request.getCode()) {
-            //从请求解析出 namespace key value 设置到kv manager中
+            //region KV配置相关
             case RequestCode.PUT_KV_CONFIG:
+                //存储KV配置
                 return this.putKVConfig(ctx, request);
-            //解析出namespace key 从kv manager中获取
             case RequestCode.GET_KV_CONFIG:
+                //查询KV配置
                 return this.getKVConfig(ctx, request);
-            //解析出namespace key 从kv manager中删除
             case RequestCode.DELETE_KV_CONFIG:
+                //删除KV配置
                 return this.deleteKVConfig(ctx, request);
-            //获取namespace的配置map
             case RequestCode.GET_KVLIST_BY_NAMESPACE:
+                //获取namespace下所有KV配置
                 return this.getKVListByNamespace(ctx, request);
-            //将配置string转换成properties并更新所有配置类对象的值
             case RequestCode.UPDATE_NAMESRV_CONFIG:
+                //更新properties所有KV配置
                 return this.updateConfig(ctx, request);
-            //将所有配置类对象值转换到properties再转换成string返回
             case RequestCode.GET_NAMESRV_CONFIG:
+                //获取所有配置properties
                 return this.getConfig(ctx, request);
+            //endregion
 
 
-            //解析出broker地址 从brokerLiveTable查询版本信息(比较时间戳&计数器，相同则更新时间戳)返回
             case RequestCode.QUERY_DATA_VERSION:
+                //查询broker地址topic配置是否变更 【比较活跃信息中topic配置版本号】
                 return queryBrokerTopicConfig(ctx, request);
-            //注册broker
             case RequestCode.REGISTER_BROKER:
+                //注册broker配置
                 Version brokerVersion = MQVersion.value2Version(request.getVersion());
                 if (brokerVersion.ordinal() >= MQVersion.Version.V3_0_11.ordinal()) {
                     return this.registerBrokerWithFilterServer(ctx, request);
@@ -113,36 +88,39 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
                 //注销broker
             case RequestCode.UNREGISTER_BROKER:
                 return this.unregisterBroker(ctx, request);
-            //获取路由信息&顺序消息配置 每个brokername的queue数量和broker地址
             case RequestCode.GET_ROUTEINFO_BY_TOPIC:
+                //查询topic路由信息
                 return this.getRouteInfoByTopic(ctx, request);
-            //获取集群信息 集群下的brokername 和brokername下的所有broker地址
             case RequestCode.GET_BROKER_CLUSTER_INFO:
+                //查询集群信息 【broker组合所有组下成员地址】
                 return this.getBrokerClusterInfo(ctx, request);
-            //取消该brokername对topic的写权限
             case RequestCode.WIPE_WRITE_PERM_OF_BROKER:
+                //擦除broker下所有topic写权限 【新创建topic无效】
                 return this.wipeWritePermOfBroker(ctx, request);
-            //获取所有topic
             case RequestCode.GET_ALL_TOPIC_LIST_FROM_NAMESERVER:
+                //查询所有topic名
                 return getAllTopicListFromNameserver(ctx, request);
-            //解析书topic 从topicQueueTable 删除topic
             case RequestCode.DELETE_TOPIC_IN_NAMESRV:
+                //删除topic配置
                 return deleteTopicInNamesrv(ctx, request);
-            //获取集群下所有topic
             case RequestCode.GET_TOPICS_BY_CLUSTER:
+                //获取集群下所有topic
                 return this.getTopicsByCluster(ctx, request);
-            //获取了集群下所有topic 和第一台broker地址
             case RequestCode.GET_SYSTEM_TOPIC_LIST_FROM_NS:
+                //获取所有系统topic 【实际获取了集群名,组1,组2,组3和组下第一台broker地址】
                 return this.getSystemTopicListFromNs(ctx, request);
-            //获取所有存在UnitFlag标识的topic
+
+            //region unit相关 【已弃用】
             case RequestCode.GET_UNIT_TOPIC_LIST:
+                //获取所有存在UnitFlag标识的topic
                 return this.getUnitTopicList(ctx, request);
-            //获取所有存在UnitSubFlag标识的topic
             case RequestCode.GET_HAS_UNIT_SUB_TOPIC_LIST:
+                //获取所有存在UnitSubFlag标识的topic
                 return this.getHasUnitSubTopicList(ctx, request);
-            //获取所有存在UnitFlag标识和UnitSubFlag标识的topic
             case RequestCode.GET_HAS_UNIT_SUB_UNUNIT_TOPIC_LIST:
+                //获取所有存在UnitFlag标识和UnitSubFlag标识的topic
                 return this.getHasUnitSubUnUnitTopicList(ctx, request);
+            //endregion
             default:
                 break;
         }
@@ -272,12 +250,10 @@ public class DefaultRequestProcessor extends AsyncNettyRequestProcessor implemen
         return true;
     }
 
-    public RemotingCommand queryBrokerTopicConfig(ChannelHandlerContext ctx,
-                                                  RemotingCommand request) throws RemotingCommandException {
-        final RemotingCommand response = RemotingCommand.createResponseCommand(QueryDataVersionResponseHeader.class);
-        final QueryDataVersionResponseHeader responseHeader = (QueryDataVersionResponseHeader) response.readCustomHeader();
-        final QueryDataVersionRequestHeader requestHeader =
-                (QueryDataVersionRequestHeader) request.decodeCommandCustomHeader(QueryDataVersionRequestHeader.class);
+    public RemotingCommand queryBrokerTopicConfig(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
+        RemotingCommand response = RemotingCommand.createResponseCommand(QueryDataVersionResponseHeader.class);
+        QueryDataVersionResponseHeader responseHeader = (QueryDataVersionResponseHeader) response.readCustomHeader();
+        QueryDataVersionRequestHeader requestHeader = (QueryDataVersionRequestHeader) request.decodeCommandCustomHeader(QueryDataVersionRequestHeader.class);
         DataVersion dataVersion = DataVersion.decode(request.getBody(), DataVersion.class);
 
         Boolean changed = this.namesrvController.getRouteInfoManager().isBrokerTopicConfigChanged(requestHeader.getBrokerAddr(), dataVersion);
