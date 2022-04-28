@@ -1,31 +1,26 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.broker.pagecache;
 
 import io.netty.channel.FileRegion;
 import io.netty.util.AbstractReferenceCounted;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.channels.FileChannel;
-import java.nio.channels.WritableByteChannel;
 import org.apache.rocketmq.store.SelectMappedBufferResult;
 
+import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.WritableByteChannel;
+
+/**
+ * 零拷贝传输单个消息结果
+ */
 public class OneMessageTransfer extends AbstractReferenceCounted implements FileRegion {
+
+    /**
+     * 响应头、非零拷贝传输
+     */
     private final ByteBuffer byteBufferHeader;
+
+    /**
+     * 日志文件内存映射消息切片
+     */
     private final SelectMappedBufferResult selectMappedBufferResult;
 
     /**
@@ -38,6 +33,10 @@ public class OneMessageTransfer extends AbstractReferenceCounted implements File
         this.selectMappedBufferResult = selectMappedBufferResult;
     }
 
+
+    /**
+     * 文件传输起始offset、因先传输了响应头、一轮输出内容作为一个逻辑文件因加上响应头大小
+     */
     @Override
     public long position() {
         return this.byteBufferHeader.position() + this.selectMappedBufferResult.getByteBuffer().position();
@@ -48,11 +47,17 @@ public class OneMessageTransfer extends AbstractReferenceCounted implements File
         return transferred;
     }
 
+    /**
+     * 总共需写出响应头 + 消息内容大小数据
+     */
     @Override
     public long count() {
         return this.byteBufferHeader.limit() + this.selectMappedBufferResult.getSize();
     }
 
+    /**
+     * 首次堆拷贝输出响应头、未达到总大小再次零拷贝输出消息内容
+     */
     @Override
     public long transferTo(WritableByteChannel target, long position) throws IOException {
         if (this.byteBufferHeader.hasRemaining()) {
