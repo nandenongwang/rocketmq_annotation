@@ -1,47 +1,70 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.common;
 
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.Setter;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * 后台服务线程
+ */
+@NoArgsConstructor
 public abstract class ServiceThread implements Runnable {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
+    /**
+     * 系统停止时、主线程等待该后台服务线程关闭最大时间
+     */
+    @Getter
     private static final long JOIN_TIME = 90 * 1000;
 
+    /**
+     * 服务执行线程
+     */
     private Thread thread;
+
+    /**
+     * 线程调度CountDownLatch
+     */
     protected final CountDownLatch2 waitPoint = new CountDownLatch2(1);
+
+    /**
+     * 服务是否被唤醒
+     */
     protected volatile AtomicBoolean hasNotified = new AtomicBoolean(false);
+
+    /**
+     * 是否停止该后台服务
+     */
+    @Getter
     protected volatile boolean stopped = false;
+
+    /**
+     * 执行是否是守护线程
+     */
+    @Getter
+    @Setter
     protected boolean isDaemon = false;
 
-    //Make it able to restart the thread
+    /**
+     * 后台服务是否启动
+     * Make it able to restart the thread
+     */
     private final AtomicBoolean started = new AtomicBoolean(false);
 
-    public ServiceThread() {
-
-    }
-
+    /**
+     * 获取后台服务名
+     */
     public abstract String getServiceName();
 
+    /**
+     * 创建线程、根据子类run方法启动后台服务线程
+     */
     public void start() {
         log.info("Try to start service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
         if (!started.compareAndSet(false, true)) {
@@ -57,7 +80,7 @@ public abstract class ServiceThread implements Runnable {
         this.shutdown(false);
     }
 
-    public void shutdown(final boolean interrupt) {
+    public void shutdown(boolean interrupt) {
         log.info("Try to shutdown service thread:{} started:{} lastThread:{}", getServiceName(), started.get(), thread);
         if (!started.compareAndSet(true, false)) {
             return;
@@ -80,7 +103,7 @@ public abstract class ServiceThread implements Runnable {
             }
             long elapsedTime = System.currentTimeMillis() - beginTime;
             log.info("join thread " + this.getServiceName() + " elapsed time(ms) " + elapsedTime + " "
-                + this.getJointime());
+                    + this.getJointime());
         } catch (InterruptedException e) {
             log.error("Interrupted", e);
         }
@@ -90,13 +113,19 @@ public abstract class ServiceThread implements Runnable {
         return JOIN_TIME;
     }
 
+    /**
+     * 停止该后台服务 【不设置线程打断标识】
+     */
     @Deprecated
     public void stop() {
         this.stop(false);
     }
 
+    /**
+     * 停止该后台服务 【设置停止位、设置唤醒位、唤醒执行线程、设置线程打断标识】
+     */
     @Deprecated
-    public void stop(final boolean interrupt) {
+    public void stop(boolean interrupt) {
         if (!started.get()) {
             return;
         }
@@ -112,6 +141,9 @@ public abstract class ServiceThread implements Runnable {
         }
     }
 
+    /**
+     * 设置后台服务关闭位关闭
+     */
     public void makeStop() {
         if (!started.get()) {
             return;
@@ -120,12 +152,18 @@ public abstract class ServiceThread implements Runnable {
         log.info("makestop thread " + this.getServiceName());
     }
 
+    /**
+     * 唤醒阻塞在CountDownLatch该服务
+     */
     public void wakeup() {
         if (hasNotified.compareAndSet(false, true)) {
             waitPoint.countDown(); // notify
         }
     }
 
+    /**
+     * 最多阻塞指定间隔等待被唤醒执行、唤醒会回调onWaitEnd扩展点
+     */
     protected void waitForRunning(long interval) {
         if (hasNotified.compareAndSet(true, false)) {
             this.onWaitEnd();
@@ -145,18 +183,9 @@ public abstract class ServiceThread implements Runnable {
         }
     }
 
+    /**
+     * 服务等待被唤醒后回调 【子类扩展用】
+     */
     protected void onWaitEnd() {
-    }
-
-    public boolean isStopped() {
-        return stopped;
-    }
-
-    public boolean isDaemon() {
-        return isDaemon;
-    }
-
-    public void setDaemon(boolean daemon) {
-        isDaemon = daemon;
     }
 }

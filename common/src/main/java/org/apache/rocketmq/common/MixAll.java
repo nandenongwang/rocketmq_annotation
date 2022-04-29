@@ -1,49 +1,23 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.common;
 
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.annotation.Annotation;
-import java.lang.reflect.Field;
-import java.lang.reflect.Method;
-import java.lang.reflect.Modifier;
-import java.net.Inet6Address;
-import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
-import java.net.URL;
-import java.net.URLConnection;
-import java.util.ArrayList;
-import java.util.Enumeration;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
-import java.util.concurrent.atomic.AtomicLong;
 import org.apache.rocketmq.common.annotation.ImportantField;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.common.help.FAQUrl;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+import java.io.*;
+import java.lang.annotation.Annotation;
+import java.lang.reflect.Field;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.net.*;
+import java.util.*;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * 工具类
+ */
 public class MixAll {
     public static final String ROCKETMQ_HOME_ENV = "ROCKETMQ_HOME";
     public static final String ROCKETMQ_HOME_PROPERTY = "rocketmq.home.dir";
@@ -84,6 +58,9 @@ public class MixAll {
     public static final String REPLY_MESSAGE_FLAG = "reply";
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
+    /**
+     * 获取外部http或https获取nameserver地址接口地址
+     */
     public static String getWSAddr() {
         String wsDomainName = System.getProperty("rocketmq.namesrv.domain", DEFAULT_NAMESRV_ADDR_LOOKUP);
         String wsDomainSubgroup = System.getProperty("rocketmq.namesrv.domain.subgroup", "nsaddr");
@@ -94,34 +71,51 @@ public class MixAll {
         return wsAddr;
     }
 
-    public static String getRetryTopic(final String consumerGroup) {
+    /**
+     * 获取指定消费组的重试topic名
+     */
+    public static String getRetryTopic(String consumerGroup) {
         return RETRY_GROUP_TOPIC_PREFIX + consumerGroup;
     }
 
-    public static String getReplyTopic(final String clusterName) {
+    /**
+     * 获取RPC消息topic名
+     */
+    public static String getReplyTopic(String clusterName) {
         return clusterName + "_" + REPLY_TOPIC_POSTFIX;
     }
 
-    public static boolean isSysConsumerGroup(final String consumerGroup) {
+    /**
+     * 是否是系统消费组 【以CID_RMQ_SYS_开头】
+     */
+    public static boolean isSysConsumerGroup(String consumerGroup) {
         return consumerGroup.startsWith(CID_RMQ_SYS_PREFIX);
     }
 
-    public static String getDLQTopic(final String consumerGroup) {
+    /**
+     * 获取指定消费组的延时topic名
+     */
+    public static String getDLQTopic(String consumerGroup) {
         return DLQ_GROUP_TOPIC_PREFIX + consumerGroup;
     }
 
-    public static String brokerVIPChannel(final boolean isChange, final String brokerAddr) {
+    /**
+     * 获取broker vip通道地址 【默认本机端口 -2】
+     */
+    public static String brokerVIPChannel(boolean isChange, String brokerAddr) {
         if (isChange) {
             int split = brokerAddr.lastIndexOf(":");
             String ip = brokerAddr.substring(0, split);
             String port = brokerAddr.substring(split + 1);
-            String brokerAddrNew = ip + ":" + (Integer.parseInt(port) - 2);
-            return brokerAddrNew;
+            return ip + ":" + (Integer.parseInt(port) - 2);
         } else {
             return brokerAddr;
         }
     }
 
+    /**
+     * 获取当前进程PID
+     */
     public static long getPID() {
         String processName = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
         if (processName != null && processName.length() > 0) {
@@ -135,7 +129,10 @@ public class MixAll {
         return 0;
     }
 
-    public static void string2File(final String str, final String fileName) throws IOException {
+    /**
+     * 原子写入字符串到文件中 【先写入、再改名】
+     */
+    public static void string2File(String str, String fileName) throws IOException {
 
         String tmpFile = fileName + ".tmp";
         string2FileNotSafe(str, tmpFile);
@@ -153,45 +150,40 @@ public class MixAll {
         file.renameTo(new File(fileName));
     }
 
-    public static void string2FileNotSafe(final String str, final String fileName) throws IOException {
+    /**
+     * 将字符内容写入到指定文件中
+     */
+    public static void string2FileNotSafe(String str, String fileName) throws IOException {
         File file = new File(fileName);
         File fileParent = file.getParentFile();
         if (fileParent != null) {
             fileParent.mkdirs();
         }
-        FileWriter fileWriter = null;
 
-        try {
-            fileWriter = new FileWriter(file);
+        try (FileWriter fileWriter = new FileWriter(file)) {
             fileWriter.write(str);
-        } catch (IOException e) {
-            throw e;
-        } finally {
-            if (fileWriter != null) {
-                fileWriter.close();
-            }
         }
     }
 
-    public static String file2String(final String fileName) throws IOException {
+    /**
+     * 读取指定文件内容成字符串
+     */
+    public static String file2String(String fileName) throws IOException {
         File file = new File(fileName);
         return file2String(file);
     }
 
-    public static String file2String(final File file) throws IOException {
+    /**
+     * 读取指定文件内容成字符串
+     */
+    public static String file2String(File file) throws IOException {
         if (file.exists()) {
             byte[] data = new byte[(int) file.length()];
             boolean result;
 
-            FileInputStream inputStream = null;
-            try {
-                inputStream = new FileInputStream(file);
+            try (FileInputStream inputStream = new FileInputStream(file)) {
                 int len = inputStream.read(data);
                 result = len == data.length;
-            } finally {
-                if (inputStream != null) {
-                    inputStream.close();
-                }
             }
 
             if (result) {
@@ -201,7 +193,10 @@ public class MixAll {
         return null;
     }
 
-    public static String file2String(final URL url) {
+    /**
+     * 读取URL资源内容成字符串
+     */
+    public static String file2String(URL url) {
         InputStream in = null;
         try {
             URLConnection urlConnection = url.openConnection();
@@ -224,12 +219,17 @@ public class MixAll {
         return null;
     }
 
-    public static void printObjectProperties(final InternalLogger logger, final Object object) {
+    /**
+     * 打印对象所有字段name和value
+     */
+    public static void printObjectProperties(InternalLogger logger, Object object) {
         printObjectProperties(logger, object, false);
     }
 
-    public static void printObjectProperties(final InternalLogger logger, final Object object,
-        final boolean onlyImportantField) {
+    /**
+     * 打印对象所有存在或不存在@ImportantField注解的字段name和value
+     */
+    public static void printObjectProperties(InternalLogger logger, Object object, boolean onlyImportantField) {
         Field[] fields = object.getClass().getDeclaredFields();
         for (Field field : fields) {
             if (!Modifier.isStatic(field.getModifiers())) {
@@ -255,24 +255,29 @@ public class MixAll {
 
                     if (logger != null) {
                         logger.info(name + "=" + value);
-                    } else {
                     }
                 }
             }
         }
     }
 
-    public static String properties2String(final Properties properties) {
+    /**
+     * 打印properties name和value
+     */
+    public static String properties2String(Properties properties) {
         StringBuilder sb = new StringBuilder();
         for (Map.Entry<Object, Object> entry : properties.entrySet()) {
             if (entry.getValue() != null) {
-                sb.append(entry.getKey().toString() + "=" + entry.getValue().toString() + "\n");
+                sb.append(entry.getKey().toString()).append("=").append(entry.getValue().toString()).append("\n");
             }
         }
         return sb.toString();
     }
 
-    public static Properties string2Properties(final String str) {
+    /**
+     * 读取字符串成properties
+     */
+    public static Properties string2Properties(String str) {
         Properties properties = new Properties();
         try {
             InputStream in = new ByteArrayInputStream(str.getBytes(DEFAULT_CHARSET));
@@ -285,7 +290,10 @@ public class MixAll {
         return properties;
     }
 
-    public static Properties object2Properties(final Object object) {
+    /**
+     * 将对象字段name和值转换成properties
+     */
+    public static Properties object2Properties(Object object) {
         Properties properties = new Properties();
 
         Field[] fields = object.getClass().getDeclaredFields();
@@ -311,7 +319,10 @@ public class MixAll {
         return properties;
     }
 
-    public static void properties2Object(final Properties p, final Object object) {
+    /**
+     * 将properties中的kv值设置到对象字段中
+     */
+    public static void properties2Object(Properties p, Object object) {
         Method[] methods = object.getClass().getMethods();
         for (Method method : methods) {
             String mn = method.getName();
@@ -324,23 +335,35 @@ public class MixAll {
                     String property = p.getProperty(key);
                     if (property != null) {
                         Class<?>[] pt = method.getParameterTypes();
-                        if (pt != null && pt.length > 0) {
+                        if (pt.length > 0) {
                             String cn = pt[0].getSimpleName();
                             Object arg = null;
-                            if (cn.equals("int") || cn.equals("Integer")) {
-                                arg = Integer.parseInt(property);
-                            } else if (cn.equals("long") || cn.equals("Long")) {
-                                arg = Long.parseLong(property);
-                            } else if (cn.equals("double") || cn.equals("Double")) {
-                                arg = Double.parseDouble(property);
-                            } else if (cn.equals("boolean") || cn.equals("Boolean")) {
-                                arg = Boolean.parseBoolean(property);
-                            } else if (cn.equals("float") || cn.equals("Float")) {
-                                arg = Float.parseFloat(property);
-                            } else if (cn.equals("String")) {
-                                arg = property;
-                            } else {
-                                continue;
+                            switch (cn) {
+                                case "int":
+                                case "Integer":
+                                    arg = Integer.parseInt(property);
+                                    break;
+                                case "long":
+                                case "Long":
+                                    arg = Long.parseLong(property);
+                                    break;
+                                case "double":
+                                case "Double":
+                                    arg = Double.parseDouble(property);
+                                    break;
+                                case "boolean":
+                                case "Boolean":
+                                    arg = Boolean.parseBoolean(property);
+                                    break;
+                                case "float":
+                                case "Float":
+                                    arg = Float.parseFloat(property);
+                                    break;
+                                case "String":
+                                    arg = property;
+                                    break;
+                                default:
+                                    continue;
                             }
                             method.invoke(object, arg);
                         }
@@ -351,12 +374,18 @@ public class MixAll {
         }
     }
 
-    public static boolean isPropertiesEqual(final Properties p1, final Properties p2) {
+    /**
+     * 两个properties是否相同
+     */
+    public static boolean isPropertiesEqual(Properties p1, Properties p2) {
         return p1.equals(p2);
     }
 
+    /**
+     * 获取所有网卡地址
+     */
     public static List<String> getLocalInetAddress() {
-        List<String> inetAddressList = new ArrayList<String>();
+        List<String> inetAddressList = new ArrayList<>();
         try {
             Enumeration<NetworkInterface> enumeration = NetworkInterface.getNetworkInterfaces();
             while (enumeration.hasMoreElements()) {
@@ -373,14 +402,18 @@ public class MixAll {
         return inetAddressList;
     }
 
+    /**
+     * 获取本机IP地址 【IPv4优先、非docker网络地址、非本地环回地址等】
+     */
     private static String localhost() {
         try {
             return InetAddress.getLocalHost().getHostAddress();
         } catch (Throwable e) {
             try {
                 String candidatesHost = getLocalhostByNetworkInterface();
-                if (candidatesHost != null)
+                if (candidatesHost != null) {
                     return candidatesHost;
+                }
 
             } catch (Exception ignored) {
             }
@@ -389,9 +422,11 @@ public class MixAll {
         }
     }
 
-    //Reverse logic comparing to RemotingUtil method, consider refactor in RocketMQ 5.0
+    /**
+     * Reverse logic comparing to RemotingUtil method, consider refactor in RocketMQ 5.0
+     */
     public static String getLocalhostByNetworkInterface() throws SocketException {
-        List<String> candidatesHost = new ArrayList<String>();
+        List<String> candidatesHost = new ArrayList<>();
         Enumeration<NetworkInterface> enumeration = NetworkInterface.getNetworkInterfaces();
 
         while (enumeration.hasMoreElements()) {
@@ -421,12 +456,16 @@ public class MixAll {
         return null;
     }
 
-    public static boolean compareAndIncreaseOnly(final AtomicLong target, final long value) {
+    /**
+     * 递增修改目标值 【value大于target时更新直到成功、否者失败】
+     */
+    public static boolean compareAndIncreaseOnly(AtomicLong target, long value) {
         long prev = target.get();
         while (value > prev) {
             boolean updated = target.compareAndSet(prev, value);
-            if (updated)
+            if (updated) {
                 return true;
+            }
 
             prev = target.get();
         }
@@ -434,10 +473,14 @@ public class MixAll {
         return false;
     }
 
+    /**
+     * 可读方式显示字节总数
+     */
     public static String humanReadableByteCount(long bytes, boolean si) {
         int unit = si ? 1000 : 1024;
-        if (bytes < unit)
+        if (bytes < unit) {
             return bytes + " B";
+        }
         int exp = (int) (Math.log(bytes) / Math.log(unit));
         String pre = (si ? "kMGTPE" : "KMGTPE").charAt(exp - 1) + (si ? "" : "i");
         return String.format("%.1f %sB", bytes / Math.pow(unit, exp), pre);

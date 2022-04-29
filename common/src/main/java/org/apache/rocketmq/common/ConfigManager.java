@@ -1,31 +1,25 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.common;
 
-import java.io.IOException;
 import org.apache.rocketmq.common.constant.LoggerName;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+import java.io.IOException;
+
+/**
+ * 配置管理器抽象类 【提供了默认的基于文件的持久化、重载等功能】
+ */
 public abstract class ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.COMMON_LOGGER_NAME);
 
+    /**
+     * 编码配置成字符串 【通常使用json格式】
+     */
     public abstract String encode();
 
+    /**
+     * 从文件中重载上传持久化的配置
+     */
     public boolean load() {
         String fileName = null;
         try {
@@ -45,8 +39,14 @@ public abstract class ConfigManager {
         }
     }
 
+    /**
+     * 获取配置文件写入位置
+     */
     public abstract String configFilePath();
 
+    /**
+     * 载入备份配置文件配置
+     */
     private boolean loadBak() {
         String fileName = null;
         try {
@@ -65,8 +65,14 @@ public abstract class ConfigManager {
         return true;
     }
 
+    /**
+     * 解码配置 【通常使用json格式】
+     */
     public abstract void decode(final String jsonString);
 
+    /**
+     * 持久化配置到配置文件
+     */
     public synchronized void persist() {
         String jsonString = this.encode(true);
         if (jsonString != null) {
@@ -79,5 +85,8 @@ public abstract class ConfigManager {
         }
     }
 
+    /**
+     * 编码配置成字符串 【通常使用json格式】
+     */
     public abstract String encode(final boolean prettyFormat);
 }
