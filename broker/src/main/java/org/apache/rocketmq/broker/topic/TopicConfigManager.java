@@ -1,14 +1,5 @@
 package org.apache.rocketmq.broker.topic;
 
-import java.util.Map;
-import java.util.Map.Entry;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.Lock;
-import java.util.concurrent.locks.ReentrantLock;
-
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.apache.rocketmq.broker.BrokerController;
@@ -25,15 +16,36 @@ import org.apache.rocketmq.common.topic.TopicValidator;
 import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
 @NoArgsConstructor
 public class TopicConfigManager extends ConfigManager {
     private static final InternalLogger log = InternalLoggerFactory.getLogger(LoggerName.BROKER_LOGGER_NAME);
     private static final long LOCK_TIMEOUT_MILLIS = 3000;
+
+    /**
+     * 延时topic queue数量
+     */
     private static final int SCHEDULE_TOPIC_QUEUE_NUM = 18;
 
     private transient final Lock lockTopicConfigTable = new ReentrantLock();
+
+    /**
+     * 所有topic配置
+     */
     @Getter
     private final ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>(1024);
+
+    /**
+     * topic配置版本 【变更后须向nameserver更新topic配置】
+     */
     @Getter
     private final DataVersion dataVersion = new DataVersion();
 
@@ -52,6 +64,8 @@ public class TopicConfigManager extends ConfigManager {
             topicConfig.setWriteQueueNums(1);
             this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
         }
+
+        //region 自动创建topic时默认模板topic
         {
             if (this.brokerController.getBrokerConfig().isAutoCreateTopicEnable()) {
                 String topic = TopicValidator.AUTO_CREATE_TOPIC_KEY_TOPIC;
@@ -66,6 +80,8 @@ public class TopicConfigManager extends ConfigManager {
                 this.topicConfigTable.put(topicConfig.getTopicName(), topicConfig);
             }
         }
+        //endregion
+
         {
             String topic = TopicValidator.RMQ_SYS_BENCHMARK_TOPIC;
             TopicConfig topicConfig = new TopicConfig(topic);

@@ -1,8 +1,7 @@
 package org.apache.rocketmq.client.consumer;
 
-import java.util.Collection;
-import java.util.List;
-
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.client.ClientConfig;
 import org.apache.rocketmq.client.consumer.rebalance.AllocateMessageQueueAveragely;
 import org.apache.rocketmq.client.consumer.store.OffsetStore;
@@ -17,6 +16,9 @@ import org.apache.rocketmq.common.protocol.NamespaceUtil;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
 import org.apache.rocketmq.remoting.RPCHook;
 
+import java.util.Collection;
+import java.util.List;
+
 public class DefaultLitePullConsumer extends ClientConfig implements LitePullConsumer {
 
     private final DefaultLitePullConsumerImpl defaultLitePullConsumerImpl;
@@ -29,54 +31,76 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
      * data consumption model aligns with the traditional publish-subscribe model. The messages are broadcast to all
      * consumer groups.
      */
+    @Getter
+    @Setter
     private String consumerGroup;
 
     /**
      * Long polling mode, the Consumer connection max suspend time, it is not recommended to modify
      */
+    @Getter
+    @Setter
     private long brokerSuspendMaxTimeMillis = 1000 * 20;
 
     /**
      * Long polling mode, the Consumer connection timeout(must greater than brokerSuspendMaxTimeMillis), it is not
      * recommended to modify
      */
+    @Getter
+    @Setter
     private long consumerTimeoutMillisWhenSuspend = 1000 * 30;
 
     /**
      * The socket timeout in milliseconds
      */
+    @Getter
+    @Setter
     private long consumerPullTimeoutMillis = 1000 * 10;
 
     /**
      * Consumption pattern,default is clustering
      */
+    @Getter
+    @Setter
     private MessageModel messageModel = MessageModel.CLUSTERING;
     /**
      * Message queue listener
      */
+    @Getter
+    @Setter
     private MessageQueueListener messageQueueListener;
     /**
      * Offset Storage
      */
+    @Getter
+    @Setter
     private OffsetStore offsetStore;
 
     /**
      * Queue allocation algorithm
      */
+    @Getter
+    @Setter
     private AllocateMessageQueueStrategy allocateMessageQueueStrategy = new AllocateMessageQueueAveragely();
     /**
      * Whether the unit of subscription group
      */
+    @Getter
+    @Setter
     private boolean unitMode = false;
 
     /**
      * The flag for auto commit offset
      */
+    @Getter
+    @Setter
     private boolean autoCommit = true;
 
     /**
      * Pull thread number
      */
+    @Getter
+    @Setter
     private int pullThreadNums = 20;
 
     /**
@@ -92,23 +116,31 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
     /**
      * Maximum number of messages pulled each time.
      */
+    @Getter
+    @Setter
     private int pullBatchSize = 10;
 
     /**
      * Flow control threshold for consume request, each consumer will cache at most 10000 consume requests by default.
      * Consider the {@code pullBatchSize}, the instantaneous value may exceed the limit
      */
+    @Getter
+    @Setter
     private long pullThresholdForAll = 10000;
 
     /**
      * Consume max span offset.
      */
+    @Getter
+    @Setter
     private int consumeMaxSpan = 2000;
 
     /**
      * Flow control threshold on queue level, each message queue will cache at most 1000 messages by default, Consider
      * the {@code pullBatchSize}, the instantaneous value may exceed the limit
      */
+    @Getter
+    @Setter
     private int pullThresholdForQueue = 1000;
 
     /**
@@ -118,24 +150,32 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
      * <p>
      * The size of a message only measured by message body, so it's not accurate
      */
+    @Getter
+    @Setter
     private int pullThresholdSizeForQueue = 100;
 
     /**
      * The poll timeout in milliseconds
      */
+    @Getter
+    @Setter
     private long pollTimeoutMillis = 1000 * 5;
 
     /**
      * Interval time in in milliseconds for checking changes in topic metadata.
      */
+    @Getter
+    @Setter
     private long topicMetadataCheckIntervalMillis = 30 * 1000;
-
+    @Getter
     private ConsumeFromWhere consumeFromWhere = ConsumeFromWhere.CONSUME_FROM_LAST_OFFSET;
 
     /**
      * Backtracking consumption time with second precision. Time format is 20131223171201<br> Implying Seventeen twelve
      * and 01 seconds on December 23, 2013 year<br> Default backtracking consumption time Half an hour ago.
      */
+    @Getter
+    @Setter
     private String consumeTimestamp = UtilAll.timeMillisToHumanString3(System.currentTimeMillis() - (1000 * 60 * 30));
 
     /**
@@ -287,16 +327,6 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
         this.defaultLitePullConsumerImpl.seekToEnd(queueWithNamespace(messageQueue));
     }
 
-    @Override
-    public boolean isAutoCommit() {
-        return autoCommit;
-    }
-
-    @Override
-    public void setAutoCommit(boolean autoCommit) {
-        this.autoCommit = autoCommit;
-    }
-
     public boolean isConnectBrokerByUser() {
         return this.defaultLitePullConsumerImpl.getPullAPIWrapper().isConnectBrokerByUser();
     }
@@ -313,14 +343,6 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
         this.defaultLitePullConsumerImpl.getPullAPIWrapper().setDefaultBrokerId(defaultBrokerId);
     }
 
-    public int getPullThreadNums() {
-        return pullThreadNums;
-    }
-
-    public void setPullThreadNums(int pullThreadNums) {
-        this.pullThreadNums = pullThreadNums;
-    }
-
     public long getAutoCommitIntervalMillis() {
         return autoCommitIntervalMillis;
     }
@@ -329,134 +351,6 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
         if (autoCommitIntervalMillis >= MIN_AUTOCOMMIT_INTERVAL_MILLIS) {
             this.autoCommitIntervalMillis = autoCommitIntervalMillis;
         }
-    }
-
-    public int getPullBatchSize() {
-        return pullBatchSize;
-    }
-
-    public void setPullBatchSize(int pullBatchSize) {
-        this.pullBatchSize = pullBatchSize;
-    }
-
-    public long getPullThresholdForAll() {
-        return pullThresholdForAll;
-    }
-
-    public void setPullThresholdForAll(long pullThresholdForAll) {
-        this.pullThresholdForAll = pullThresholdForAll;
-    }
-
-    public int getConsumeMaxSpan() {
-        return consumeMaxSpan;
-    }
-
-    public void setConsumeMaxSpan(int consumeMaxSpan) {
-        this.consumeMaxSpan = consumeMaxSpan;
-    }
-
-    public int getPullThresholdForQueue() {
-        return pullThresholdForQueue;
-    }
-
-    public void setPullThresholdForQueue(int pullThresholdForQueue) {
-        this.pullThresholdForQueue = pullThresholdForQueue;
-    }
-
-    public int getPullThresholdSizeForQueue() {
-        return pullThresholdSizeForQueue;
-    }
-
-    public void setPullThresholdSizeForQueue(int pullThresholdSizeForQueue) {
-        this.pullThresholdSizeForQueue = pullThresholdSizeForQueue;
-    }
-
-    public AllocateMessageQueueStrategy getAllocateMessageQueueStrategy() {
-        return allocateMessageQueueStrategy;
-    }
-
-    public void setAllocateMessageQueueStrategy(AllocateMessageQueueStrategy allocateMessageQueueStrategy) {
-        this.allocateMessageQueueStrategy = allocateMessageQueueStrategy;
-    }
-
-    public long getBrokerSuspendMaxTimeMillis() {
-        return brokerSuspendMaxTimeMillis;
-    }
-
-    public long getPollTimeoutMillis() {
-        return pollTimeoutMillis;
-    }
-
-    public void setPollTimeoutMillis(long pollTimeoutMillis) {
-        this.pollTimeoutMillis = pollTimeoutMillis;
-    }
-
-    public OffsetStore getOffsetStore() {
-        return offsetStore;
-    }
-
-    public void setOffsetStore(OffsetStore offsetStore) {
-        this.offsetStore = offsetStore;
-    }
-
-    public boolean isUnitMode() {
-        return unitMode;
-    }
-
-    public void setUnitMode(boolean isUnitMode) {
-        this.unitMode = isUnitMode;
-    }
-
-    public MessageModel getMessageModel() {
-        return messageModel;
-    }
-
-    public void setMessageModel(MessageModel messageModel) {
-        this.messageModel = messageModel;
-    }
-
-    public String getConsumerGroup() {
-        return consumerGroup;
-    }
-
-    public MessageQueueListener getMessageQueueListener() {
-        return messageQueueListener;
-    }
-
-    public void setMessageQueueListener(MessageQueueListener messageQueueListener) {
-        this.messageQueueListener = messageQueueListener;
-    }
-
-    public long getConsumerPullTimeoutMillis() {
-        return consumerPullTimeoutMillis;
-    }
-
-    public void setConsumerPullTimeoutMillis(long consumerPullTimeoutMillis) {
-        this.consumerPullTimeoutMillis = consumerPullTimeoutMillis;
-    }
-
-    public long getConsumerTimeoutMillisWhenSuspend() {
-        return consumerTimeoutMillisWhenSuspend;
-    }
-
-    public void setConsumerTimeoutMillisWhenSuspend(long consumerTimeoutMillisWhenSuspend) {
-        this.consumerTimeoutMillisWhenSuspend = consumerTimeoutMillisWhenSuspend;
-    }
-
-    public long getTopicMetadataCheckIntervalMillis() {
-        return topicMetadataCheckIntervalMillis;
-    }
-
-    public void setTopicMetadataCheckIntervalMillis(long topicMetadataCheckIntervalMillis) {
-        this.topicMetadataCheckIntervalMillis = topicMetadataCheckIntervalMillis;
-    }
-
-    public void setConsumerGroup(String consumerGroup) {
-        this.consumerGroup = consumerGroup;
-    }
-
-    public ConsumeFromWhere getConsumeFromWhere() {
-        return consumeFromWhere;
     }
 
     public void setConsumeFromWhere(ConsumeFromWhere consumeFromWhere) {
@@ -468,11 +362,4 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
         this.consumeFromWhere = consumeFromWhere;
     }
 
-    public String getConsumeTimestamp() {
-        return consumeTimestamp;
-    }
-
-    public void setConsumeTimestamp(String consumeTimestamp) {
-        this.consumeTimestamp = consumeTimestamp;
-    }
 }

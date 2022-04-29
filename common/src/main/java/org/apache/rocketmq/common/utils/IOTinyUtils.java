@@ -1,51 +1,36 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 package org.apache.rocketmq.common.utils;
 
-import java.io.BufferedReader;
-import java.io.CharArrayWriter;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
-import java.io.Reader;
-import java.io.Writer;
+import org.apache.rocketmq.remoting.common.RemotingHelper;
+
+import java.io.*;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
-import org.apache.rocketmq.remoting.common.RemotingHelper;
 
+/**
+ * 轻量IO工具类
+ */
 public class IOTinyUtils {
 
+    /**
+     * 读取InputStream内容
+     */
     static public String toString(InputStream input, String encoding) throws IOException {
-        return (null == encoding) ? toString(new InputStreamReader(input, RemotingHelper.DEFAULT_CHARSET)) : toString(new InputStreamReader(
-            input, encoding));
+        return (null == encoding) ? toString(new InputStreamReader(input, RemotingHelper.DEFAULT_CHARSET)) : toString(new InputStreamReader(input, encoding));
     }
 
+    /**
+     * 读取Reader内容
+     */
     static public String toString(Reader reader) throws IOException {
         CharArrayWriter sw = new CharArrayWriter();
         copy(reader, sw);
         return sw.toString();
     }
 
+    /**
+     * 复制Reader写出到Writer
+     */
     static public long copy(Reader input, Writer output) throws IOException {
         char[] buffer = new char[1 << 12];
         long count = 0;
@@ -56,9 +41,12 @@ public class IOTinyUtils {
         return count;
     }
 
+    /**
+     * 按行读取Reader内容
+     */
     static public List<String> readLines(Reader input) throws IOException {
         BufferedReader reader = toBufferedReader(input);
-        List<String> list = new ArrayList<String>();
+        List<String> list = new ArrayList<>();
         String line;
         for (; ; ) {
             line = reader.readLine();
@@ -71,10 +59,16 @@ public class IOTinyUtils {
         return list;
     }
 
+    /**
+     * 包装Reader成BufferedReader
+     */
     static private BufferedReader toBufferedReader(Reader reader) {
         return reader instanceof BufferedReader ? (BufferedReader) reader : new BufferedReader(reader);
     }
 
+    /**
+     * 拷贝文件内容
+     */
     static public void copyFile(String source, String target) throws IOException {
         File sf = new File(source);
         if (!sf.exists()) {
@@ -86,22 +80,14 @@ public class IOTinyUtils {
             throw new RuntimeException("failed to create target file.");
         }
 
-        FileChannel sc = null;
-        FileChannel tc = null;
-        try {
-            tc = new FileOutputStream(tf).getChannel();
-            sc = new FileInputStream(sf).getChannel();
+        try (FileChannel tc = new FileOutputStream(tf).getChannel(); FileChannel sc = new FileInputStream(sf).getChannel()) {
             sc.transferTo(0, sc.size(), tc);
-        } finally {
-            if (null != sc) {
-                sc.close();
-            }
-            if (null != tc) {
-                tc.close();
-            }
         }
     }
 
+    /**
+     * 删除文件或目录
+     */
     public static void delete(File fileOrDir) throws IOException {
         if (fileOrDir == null) {
             return;
@@ -114,6 +100,9 @@ public class IOTinyUtils {
         fileOrDir.delete();
     }
 
+    /**
+     * 删除目录下所有文件
+     */
     public static void cleanDirectory(File directory) throws IOException {
         if (!directory.exists()) {
             String message = directory + " does not exist";
@@ -144,15 +133,12 @@ public class IOTinyUtils {
         }
     }
 
+    /**
+     * 写出文本到文件
+     */
     public static void writeStringToFile(File file, String data, String encoding) throws IOException {
-        OutputStream os = null;
-        try {
-            os = new FileOutputStream(file);
+        try (OutputStream os = new FileOutputStream(file)) {
             os.write(data.getBytes(encoding));
-        } finally {
-            if (null != os) {
-                os.close();
-            }
         }
     }
 }

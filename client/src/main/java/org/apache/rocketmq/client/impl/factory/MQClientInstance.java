@@ -69,6 +69,10 @@ public class MQClientInstance {
     private final RebalanceService rebalanceService;
     private final DefaultMQProducer defaultMQProducer;
     private final ConsumerStatsManager consumerStatsManager;
+
+    /**
+     * 发送心跳到broker累计次数
+     */
     private final AtomicLong sendHeartbeatTimesTotal = new AtomicLong(0);
     private ServiceState serviceState = CREATE_JUST;
     private final Random random = new Random();
@@ -123,7 +127,7 @@ public class MQClientInstance {
         TopicPublishInfo info = new TopicPublishInfo();
         info.setTopicRouteData(route);
         if (route.getOrderTopicConf() != null && route.getOrderTopicConf().length() > 0) {
-            //todo 确认ordertopic配置
+            //brokername1:16;brokername2:16
             String[] brokers = route.getOrderTopicConf().split(";");
             for (String broker : brokers) {
                 String[] item = broker.split(":");
@@ -510,7 +514,7 @@ public class MQClientInstance {
         HeartbeatData heartbeatData = this.prepareHeartbeatData();
         //endregion
 
-        //region 检查clientinstance是否有注册生产者或消费者 无则无需发送心跳
+        //region 若该客户端没有注册消费者和生产者无需发送心跳
         boolean producerEmpty = heartbeatData.getProducerDataSet().isEmpty();
         boolean consumerEmpty = heartbeatData.getConsumerDataSet().isEmpty();
         if (producerEmpty && consumerEmpty) {
@@ -523,7 +527,7 @@ public class MQClientInstance {
 
             long times = this.sendHeartbeatTimesTotal.getAndIncrement();
 
-            for (Entry<String, HashMap<Long, String>> entry : this.brokerAddrTable.entrySet()) {
+            for (Entry<String/* broekr组 */, HashMap<Long/* id */, String/* address */>> entry : this.brokerAddrTable.entrySet()) {
 
                 String brokerName = entry.getKey();
                 HashMap<Long, String> oneTable = entry.getValue();
@@ -535,7 +539,7 @@ public class MQClientInstance {
                         if (addr != null) {
 
                             //没有注册消费者 & slave broker 不需要发送心跳
-                            //消费信息要发送给所有broker 生产者信息及发送给master节点即可
+                            //即消费信息要发送给所有broker 生产者信息及发送给master节点即可
                             if (consumerEmpty && id != MixAll.MASTER_ID) {
                                 continue;
                             }

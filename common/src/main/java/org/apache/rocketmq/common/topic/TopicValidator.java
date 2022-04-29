@@ -1,21 +1,6 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.common.topic;
 
+import lombok.Getter;
 import org.apache.rocketmq.common.UtilAll;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
@@ -25,6 +10,9 @@ import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+/**
+ * topic格式校验工具
+ */
 public class TopicValidator {
 
     public static final String AUTO_CREATE_TOPIC_KEY_TOPIC = "TBW102"; // Will be created at broker when isAutoCreateTopicEnable
@@ -43,12 +31,20 @@ public class TopicValidator {
     private static final Pattern PATTERN = Pattern.compile(VALID_PATTERN_STR);
     private static final int TOPIC_MAX_LENGTH = 127;
 
-    private static final Set<String> SYSTEM_TOPIC_SET = new HashSet<String>();
+    private static final Set<String> SYSTEM_TOPIC_SET = new HashSet<>();
+
+    public static Set<String> getSystemTopicSet() {
+        return SYSTEM_TOPIC_SET;
+    }
 
     /**
      * Topics'set which client can not send msg!
      */
     private static final Set<String> NOT_ALLOWED_SEND_TOPIC_SET = new HashSet<>();
+
+    public static Set<String> getNotAllowedSendTopicSet() {
+        return NOT_ALLOWED_SEND_TOPIC_SET;
+    }
 
     static {
         SYSTEM_TOPIC_SET.add(AUTO_CREATE_TOPIC_KEY_TOPIC);
@@ -123,13 +119,5 @@ public class TopicValidator {
 
     public static void addSystemTopic(String systemTopic) {
         SYSTEM_TOPIC_SET.add(systemTopic);
-    }
-
-    public static Set<String> getSystemTopicSet() {
-        return SYSTEM_TOPIC_SET;
-    }
-
-    public static Set<String> getNotAllowedSendTopicSet() {
-        return NOT_ALLOWED_SEND_TOPIC_SET;
     }
 }

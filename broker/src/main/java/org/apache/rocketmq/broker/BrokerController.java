@@ -901,7 +901,7 @@ public class BrokerController {
                             this.brokerConfig.getBrokerPermission());
         }
 
-        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<String, TopicConfig>();
+        ConcurrentMap<String, TopicConfig> topicConfigTable = new ConcurrentHashMap<>();
         topicConfigTable.put(topicConfig.getTopicName(), registerTopicConfig);
         TopicConfigSerializeWrapper topicConfigSerializeWrapper = new TopicConfigSerializeWrapper();
         topicConfigSerializeWrapper.setDataVersion(dataVersion);

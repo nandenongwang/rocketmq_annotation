@@ -75,6 +75,7 @@ public class PullAPIWrapper {
     @Setter
     @Getter
     private volatile boolean connectBrokerByUser = false;
+
     /**
      * 拉取brokerId
      */

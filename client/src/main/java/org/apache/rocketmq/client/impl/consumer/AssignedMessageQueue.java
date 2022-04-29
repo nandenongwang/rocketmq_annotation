@@ -1,16 +1,16 @@
 package org.apache.rocketmq.client.impl.consumer;
 
+import lombok.Data;
+import org.apache.rocketmq.common.message.MessageQueue;
+
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-import lombok.Data;
-import org.apache.rocketmq.common.message.MessageQueue;
-
 /**
- * 保存消费者所有分配的消费queue状态
+ * 保存消费者所有分配的消费queue状态&处理queue
  * 重平后需更新
  */
 public class AssignedMessageQueue {
@@ -20,7 +20,7 @@ public class AssignedMessageQueue {
     private RebalanceImpl rebalanceImpl;
 
     public AssignedMessageQueue() {
-        assignedMessageQueueState = new ConcurrentHashMap<MessageQueue, MessageQueueState>();
+        assignedMessageQueueState = new ConcurrentHashMap<>();
     }
 
     public void setRebalanceImpl(RebalanceImpl rebalanceImpl) {
@@ -128,6 +128,7 @@ public class AssignedMessageQueue {
         }
     }
 
+    //region 更新指定消费queue 【移除原指定消费queue中不在新指定queue中的queue、再新增所有新指定的queue】
     public void updateAssignedMessageQueue(Collection<MessageQueue> assigned) {
         synchronized (this.assignedMessageQueueState) {
             Iterator<Map.Entry<MessageQueue, MessageQueueState>> it = this.assignedMessageQueueState.entrySet().iterator();
@@ -156,6 +157,7 @@ public class AssignedMessageQueue {
             }
         }
     }
+    //endregion
 
     public void removeAssignedMessageQueue(String topic) {
         synchronized (this.assignedMessageQueueState) {
@@ -172,6 +174,10 @@ public class AssignedMessageQueue {
         private MessageQueue messageQueue;
         private ProcessQueue processQueue;
         private volatile boolean paused = false;
+
+        /**
+         * 下次pull开始位置
+         */
         private volatile long pullOffset = -1;
         private volatile long consumeOffset = -1;
         private volatile long seekOffset = -1;

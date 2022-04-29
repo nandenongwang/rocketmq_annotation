@@ -293,7 +293,7 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
     private synchronized RemotingCommand updateAndCreateTopic(ChannelHandlerContext ctx, RemotingCommand request) throws RemotingCommandException {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
 
-        //region 解析&校验topic参数
+        //region 解析并校验topic创建参数
         CreateTopicRequestHeader requestHeader = (CreateTopicRequestHeader) request.decodeCommandCustomHeader(CreateTopicRequestHeader.class);
         log.info("updateAndCreateTopic called by {}", RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
 
@@ -315,12 +315,6 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
         topicConfig.setPerm(requestHeader.getPerm());
         topicConfig.setTopicSysFlag(requestHeader.getTopicSysFlag() == null ? 0 : requestHeader.getTopicSysFlag());
         //endregion
-
-        //region
-        //endregion
-        //region
-        //endregion
-
 
         this.brokerController.getTopicConfigManager().updateTopicConfig(topicConfig);
 
@@ -1355,8 +1349,9 @@ public class AdminBrokerProcessor extends AsyncNettyRequestProcessor implements 
                     mq.setQueueId(i);
                     OffsetWrapper offsetWrapper = new OffsetWrapper();
                     long brokerOffset = this.brokerController.getMessageStore().getMaxOffsetInQueue(topic, i);
-                    if (brokerOffset < 0)
+                    if (brokerOffset < 0) {
                         brokerOffset = 0;
+                    }
                     long consumerOffset = this.brokerController.getConsumerOffsetManager().queryOffset(
                             group,
                             topic,

@@ -6,17 +6,26 @@ package org.apache.rocketmq.common.consumer;
 public enum ConsumeFromWhere {
 
     /**
-     * 从上次提交offset开始消费
+     * push:
+     * 从消费进度开始 【没有进度时、正常从最后一条开始、重试从第一条开始】
+     * pull:
+     * litepull:
      */
     CONSUME_FROM_LAST_OFFSET,
 
     /**
-     *
+     * push:
+     * 从消费进度开始 【没有进度时、正常&重试都从第一条开始】
+     * pull:
+     * litepull:
      */
     CONSUME_FROM_FIRST_OFFSET,
 
     /**
-     *
+     * push:
+     * 从消费进度开始 【没有进度时、重试冲最后一条开始、正常从启动前半小时存储的消息开始】
+     * pull:
+     * litepull:
      */
     CONSUME_FROM_TIMESTAMP,
 

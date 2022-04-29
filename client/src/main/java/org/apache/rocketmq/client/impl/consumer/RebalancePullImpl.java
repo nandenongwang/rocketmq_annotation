@@ -1,13 +1,14 @@
 package org.apache.rocketmq.client.impl.consumer;
 
-import java.util.List;
-import java.util.Set;
 import org.apache.rocketmq.client.consumer.AllocateMessageQueueStrategy;
 import org.apache.rocketmq.client.consumer.MessageQueueListener;
 import org.apache.rocketmq.client.impl.factory.MQClientInstance;
 import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.heartbeat.ConsumeType;
 import org.apache.rocketmq.common.protocol.heartbeat.MessageModel;
+
+import java.util.List;
+import java.util.Set;
 
 public class RebalancePullImpl extends RebalanceImpl {
     private final DefaultMQPullConsumerImpl defaultMQPullConsumerImpl;
@@ -17,8 +18,8 @@ public class RebalancePullImpl extends RebalanceImpl {
     }
 
     public RebalancePullImpl(String consumerGroup, MessageModel messageModel,
-        AllocateMessageQueueStrategy allocateMessageQueueStrategy,
-        MQClientInstance mQClientFactory, DefaultMQPullConsumerImpl defaultMQPullConsumerImpl) {
+                             AllocateMessageQueueStrategy allocateMessageQueueStrategy,
+                             MQClientInstance mQClientFactory, DefaultMQPullConsumerImpl defaultMQPullConsumerImpl) {
         super(consumerGroup, messageModel, allocateMessageQueueStrategy, mQClientFactory);
         this.defaultMQPullConsumerImpl = defaultMQPullConsumerImpl;
     }
@@ -52,11 +53,17 @@ public class RebalancePullImpl extends RebalanceImpl {
         this.defaultMQPullConsumerImpl.getOffsetStore().removeOffset(mq);
     }
 
+    /**
+     * 计算起始拉取位置 【pull类型消费者需手动设置起始offset、未设置则都重头拉取】
+     */
     @Override
     public long computePullFromWhere(MessageQueue mq) {
         return 0;
     }
 
+    /**
+     * pull类型手动拉取消息、无需分派拉取请求
+     */
     @Override
     public void dispatchPullRequest(List<PullRequest> pullRequestList) {
     }

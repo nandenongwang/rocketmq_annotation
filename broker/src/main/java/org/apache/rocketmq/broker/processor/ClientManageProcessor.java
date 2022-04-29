@@ -39,8 +39,8 @@ import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.logging.InternalLoggerFactory;
 import org.apache.rocketmq.remoting.common.RemotingHelper;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
-import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.netty.AsyncNettyRequestProcessor;
+import org.apache.rocketmq.remoting.netty.NettyRequestProcessor;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
 public class ClientManageProcessor extends AsyncNettyRequestProcessor implements NettyRequestProcessor {
@@ -81,15 +81,11 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
     public RemotingCommand heartBeat(ChannelHandlerContext ctx, RemotingCommand request) {
         RemotingCommand response = RemotingCommand.createResponseCommand(null);
         HeartbeatData heartbeatData = HeartbeatData.decode(request.getBody(), HeartbeatData.class);
-        ClientChannelInfo clientChannelInfo = new ClientChannelInfo(
-                ctx.channel(),
-                heartbeatData.getClientID(),
-                request.getLanguage(),
-                request.getVersion()
-        );
+        ClientChannelInfo clientChannelInfo = new ClientChannelInfo(ctx.channel(), heartbeatData.getClientID(), request.getLanguage(), request.getVersion());
 
+        //region 处理心跳数据消费者信息
         for (ConsumerData data : heartbeatData.getConsumerDataSet()) {
-            //查找并根据isAutoCreateSubscriptionGroup 自动创建与consumergroup同名的subscriptiongroup
+            //查找并根据【isAutoCreateSubscriptionGroup】自动创建与消费组同名的消费组订阅配置
             SubscriptionGroupConfig subscriptionGroupConfig = this.brokerController.getSubscriptionGroupManager().findSubscriptionGroupConfig(data.getGroupName());
             boolean isNotifyConsumerIdsChangedEnable = true;
             if (null != subscriptionGroupConfig) {
@@ -98,14 +94,14 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
                 if (data.isUnitMode()) {
                     topicSysFlag = TopicSysFlag.buildSysFlag(false, true);
                 }
-                //尝试创建该consumergroup的重试topic 存在则不操作
+                //创建该消费组重试topic 【存在则不做操作】
                 String newTopic = MixAll.getRetryTopic(data.getGroupName());
                 this.brokerController.getTopicConfigManager().createTopicInSendMessageBackMethod(
                         newTopic,
                         subscriptionGroupConfig.getRetryQueueNums(),
                         PermName.PERM_WRITE | PermName.PERM_READ, topicSysFlag);
             }
-
+            //向consumer管理器中注册管理该消费者
             boolean changed = this.brokerController.getConsumerManager().registerConsumer(
                     data.getGroupName(),
                     clientChannelInfo,
@@ -117,17 +113,18 @@ public class ClientManageProcessor extends AsyncNettyRequestProcessor implements
             );
 
             if (changed) {
-                log.info("registerConsumer info changed {} {}",
-                        data.toString(),
-                        RemotingHelper.parseChannelRemoteAddr(ctx.channel())
-                );
+                log.info("registerConsumer info changed {} {}", data.toString(), RemotingHelper.parseChannelRemoteAddr(ctx.channel()));
             }
         }
+        //endregion
 
+        //region 处理心跳数据生产者信息
         for (ProducerData data : heartbeatData.getProducerDataSet()) {
-            this.brokerController.getProducerManager().registerProducer(data.getGroupName(),
-                    clientChannelInfo);
+            //向producer管理器中注册管理该生产者
+            this.brokerController.getProducerManager().registerProducer(data.getGroupName(), clientChannelInfo);
         }
+        //endregion
+
         response.setCode(ResponseCode.SUCCESS);
         response.setRemark(null);
         return response;
