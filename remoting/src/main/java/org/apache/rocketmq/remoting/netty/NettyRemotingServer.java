@@ -87,12 +87,9 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
      */
     private final Timer timer = new Timer("ServerHouseKeepingService", true);
 
-    /**
-     * Socket监听端口 默认8888
-     */
+
     private int port = 0;
 
-    //region netty处理handler
     private static final String HANDSHAKE_HANDLER_NAME = "handshakeHandler";
     private static final String TLS_HANDLER_NAME = "sslHandler";
     private static final String FILE_REGION_ENCODER_NAME = "fileRegionEncoder";
@@ -102,8 +99,6 @@ public class NettyRemotingServer extends NettyRemotingAbstract implements Remoti
     private NettyEncoder encoder;
     private NettyConnectManageHandler connectionManageHandler;
     private NettyServerHandler serverHandler;
-    //endregion
-
 
     public NettyRemotingServer(final NettyServerConfig nettyServerConfig) {
         this(nettyServerConfig, null);

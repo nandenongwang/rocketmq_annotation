@@ -529,7 +529,12 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         assignedMessageQueue.resume(messageQueues);
     }
 
+    /**
+     * 手动指定queue查询起始位置
+     */
     public synchronized void seek(MessageQueue messageQueue, long offset) throws MQClientException {
+
+        //region 查找的queue必须是指定拉取的queue
         if (!assignedMessageQueue.messageQueues().contains(messageQueue)) {
             if (subscriptionType == SubscriptionType.SUBSCRIBE) {
                 throw new MQClientException("The message queue is not in assigned list, may be rebalancing, message queue: " + messageQueue, null);
@@ -537,42 +542,67 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
                 throw new MQClientException("The message queue is not in assigned list, message queue: " + messageQueue, null);
             }
         }
+        //endregion
+
+        //region 从broker获取该queue offset范围、检查查询offset是否有效
         long minOffset = minOffset(messageQueue);
         long maxOffset = maxOffset(messageQueue);
         if (offset < minOffset || offset > maxOffset) {
             throw new MQClientException("Seek offset illegal, seek offset = " + offset + ", min offset = " + minOffset + ", max offset = " + maxOffset, null);
         }
+        //endregion
+
+        //region 设置查询位置、并清空处理queue中已pull到的消息缓存、待下次从seek处重新拉取
         final Object objLock = messageQueueLock.fetchLockObject(messageQueue);
         synchronized (objLock) {
             assignedMessageQueue.setSeekOffset(messageQueue, offset);
             clearMessageQueueInCache(messageQueue);
         }
+        //endregion
     }
 
+    /**
+     * 指定从queue最小offset开始拉取
+     */
     public void seekToBegin(MessageQueue messageQueue) throws MQClientException {
         long begin = minOffset(messageQueue);
         this.seek(messageQueue, begin);
     }
 
+    /**
+     * 指定从queue最大offset开始拉取
+     */
     public void seekToEnd(MessageQueue messageQueue) throws MQClientException {
         long end = maxOffset(messageQueue);
         this.seek(messageQueue, end);
     }
 
+    /**
+     * 查询queue最大offset
+     */
     private long maxOffset(MessageQueue messageQueue) throws MQClientException {
         checkServiceState();
         return this.mQClientFactory.getMQAdminImpl().maxOffset(messageQueue);
     }
 
+    /**
+     * 查询queue最小offset
+     */
     private long minOffset(MessageQueue messageQueue) throws MQClientException {
         checkServiceState();
         return this.mQClientFactory.getMQAdminImpl().minOffset(messageQueue);
     }
 
+    /**
+     *
+     */
     private void removePullTaskCallback(final String topic) {
         removePullTask(topic);
     }
 
+    /**
+     *
+     */
     private void removePullTask(final String topic) {
         Iterator<Map.Entry<MessageQueue, PullTaskImpl>> it = this.taskTable.entrySet().iterator();
         while (it.hasNext()) {
@@ -668,7 +698,15 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
      */
     @Data
     public class PullTaskImpl implements Runnable {
+
+        /**
+         * 正在拉取的queue
+         */
         private final MessageQueue messageQueue;
+
+        /**
+         * 该任务是否被取消
+         */
         private volatile boolean cancelled = false;
 
         public PullTaskImpl(final MessageQueue messageQueue) {
@@ -738,6 +776,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
                 }
                 //endregion
 
+                //计算本次拉取开始位置
                 long offset = nextPullOffset(messageQueue);
                 long pullDelayTimeMills = 0;
                 try {
