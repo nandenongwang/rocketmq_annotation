@@ -179,7 +179,15 @@ public class AssignedMessageQueue {
          * 下次pull开始位置
          */
         private volatile long pullOffset = -1;
+
+        /**
+         * 生产者本地消费进度
+         */
         private volatile long consumeOffset = -1;
+
+        /**
+         *
+         */
         private volatile long seekOffset = -1;
 
         private MessageQueueState(MessageQueue messageQueue, ProcessQueue processQueue) {
