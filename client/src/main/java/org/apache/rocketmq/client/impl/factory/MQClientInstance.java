@@ -47,33 +47,98 @@ import static org.apache.rocketmq.common.ServiceState.START_FAILED;
 public class MQClientInstance {
     private final static long LOCK_TIMEOUT_MILLIS = 3000;
     private final InternalLogger log = ClientLogger.getLog();
+
+    /**
+     * 客户端配置
+     */
     private final ClientConfig clientConfig;
+
+    /**
+     *
+     */
     private final int instanceIndex;
+
+    /**
+     *
+     */
     private final String clientId;
+
+    /**
+     * 客户端启动时间
+     */
     private final long bootTimestamp = System.currentTimeMillis();
-    //单个实例下同一生产组、消费组仅能有单个生产者、消费者
+
+    /**
+     * 客户端管理的所有生产者 【单个实例下同一生产组、消费组仅能有单个生产者、消费者】
+     */
     private final ConcurrentMap<String/* group */, MQProducerInner> producerTable = new ConcurrentHashMap<>();
+
+    /**
+     * 客户端管理的所有生产者 【单个实例下同一生产组、消费组仅能有单个生产者、消费者】
+     */
     private final ConcurrentMap<String/* group */, MQConsumerInner> consumerTable = new ConcurrentHashMap<>();
+
+    /**
+     * 客户端管理的所有生产者 【单个实例下同一生产组、消费组仅能有单个生产者、消费者】
+     */
     private final ConcurrentMap<String/* group */, MQAdminExtInner> adminExtTable = new ConcurrentHashMap<>();
-    private final NettyClientConfig nettyClientConfig;
-    private final MQClientAPIImpl mQClientAPIImpl;
-    private final MQAdminImpl mQAdminImpl;
+
+    /**
+     * 客户端管理的所有topic路由信息
+     */
     private final ConcurrentMap<String/* Topic */, TopicRouteData> topicRouteTable = new ConcurrentHashMap<>();
+
+    /**
+     * netty client配置
+     */
+    private final NettyClientConfig nettyClientConfig;
+
+    /**
+     * 客户端Api功能实现服务
+     */
+    private final MQClientAPIImpl mQClientAPIImpl;
+
+    /**
+     * 管理功能实现服务
+     */
+    private final MQAdminImpl mQAdminImpl;
+
+
     private final Lock lockNamesrv = new ReentrantLock();
     private final Lock lockHeartbeat = new ReentrantLock();
     private final ConcurrentMap<String/* Broker Name */, HashMap<Long/* brokerId */, String/* address */>> brokerAddrTable = new ConcurrentHashMap<>();
     private final ConcurrentMap<String/* Broker Name */, HashMap<String/* address */, Integer>> brokerVersionTable = new ConcurrentHashMap<>();
     private final ScheduledExecutorService scheduledExecutorService = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "MQClientFactoryScheduledThread"));
     private final ClientRemotingProcessor clientRemotingProcessor;
+
+    /**
+     * 消息拉取后台服务
+     */
     private final PullMessageService pullMessageService;
+
+    /**
+     * 重平衡后台服务
+     */
     private final RebalanceService rebalanceService;
+
+    /**
+     * 内部消息使用生产者
+     */
     private final DefaultMQProducer defaultMQProducer;
+
+    /**
+     * 消费者统计管理器
+     */
     private final ConsumerStatsManager consumerStatsManager;
 
     /**
      * 发送心跳到broker累计次数
      */
     private final AtomicLong sendHeartbeatTimesTotal = new AtomicLong(0);
+
+    /**
+     * 客户端运行状态
+     */
     private ServiceState serviceState = CREATE_JUST;
     private final Random random = new Random();
 

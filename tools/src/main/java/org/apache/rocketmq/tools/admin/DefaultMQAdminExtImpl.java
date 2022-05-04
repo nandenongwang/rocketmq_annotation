@@ -165,15 +165,13 @@ public class DefaultMQAdminExtImpl implements MQAdminExt, MQAdminExtInner {
     }
 
     @Override
-    public void updateBrokerConfig(String brokerAddr,
-                                   Properties properties) throws RemotingConnectException, RemotingSendRequestException,
+    public void updateBrokerConfig(String brokerAddr, Properties properties) throws RemotingConnectException, RemotingSendRequestException,
             RemotingTimeoutException, UnsupportedEncodingException, InterruptedException, MQBrokerException {
         this.mqClientInstance.getMQClientAPIImpl().updateBrokerConfig(brokerAddr, properties, timeoutMillis);
     }
 
     @Override
-    public Properties getBrokerConfig(final String brokerAddr) throws RemotingConnectException,
-            RemotingSendRequestException, RemotingTimeoutException, UnsupportedEncodingException, InterruptedException, MQBrokerException {
+    public Properties getBrokerConfig(final String brokerAddr) throws RemotingConnectException, RemotingSendRequestException, RemotingTimeoutException, UnsupportedEncodingException, InterruptedException, MQBrokerException {
         return this.mqClientInstance.getMQClientAPIImpl().getBrokerConfig(brokerAddr, timeoutMillis);
     }
 

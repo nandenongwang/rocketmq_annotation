@@ -1,32 +1,7 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.rocketmq.client.impl;
 
-import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.locks.ReadWriteLock;
-import java.util.concurrent.locks.ReentrantReadWriteLock;
-
+import lombok.Getter;
+import lombok.Setter;
 import org.apache.rocketmq.client.QueryResult;
 import org.apache.rocketmq.client.Validators;
 import org.apache.rocketmq.client.exception.MQBrokerException;
@@ -37,19 +12,14 @@ import org.apache.rocketmq.client.log.ClientLogger;
 import org.apache.rocketmq.common.MixAll;
 import org.apache.rocketmq.common.TopicConfig;
 import org.apache.rocketmq.common.help.FAQUrl;
+import org.apache.rocketmq.common.message.*;
 import org.apache.rocketmq.common.protocol.NamespaceUtil;
-import org.apache.rocketmq.logging.InternalLogger;
-import org.apache.rocketmq.common.message.MessageClientIDSetter;
-import org.apache.rocketmq.common.message.MessageConst;
-import org.apache.rocketmq.common.message.MessageDecoder;
-import org.apache.rocketmq.common.message.MessageExt;
-import org.apache.rocketmq.common.message.MessageId;
-import org.apache.rocketmq.common.message.MessageQueue;
 import org.apache.rocketmq.common.protocol.ResponseCode;
 import org.apache.rocketmq.common.protocol.header.QueryMessageRequestHeader;
 import org.apache.rocketmq.common.protocol.header.QueryMessageResponseHeader;
 import org.apache.rocketmq.common.protocol.route.BrokerData;
 import org.apache.rocketmq.common.protocol.route.TopicRouteData;
+import org.apache.rocketmq.logging.InternalLogger;
 import org.apache.rocketmq.remoting.InvokeCallback;
 import org.apache.rocketmq.remoting.common.RemotingUtil;
 import org.apache.rocketmq.remoting.exception.RemotingCommandException;
@@ -57,24 +27,29 @@ import org.apache.rocketmq.remoting.exception.RemotingException;
 import org.apache.rocketmq.remoting.netty.ResponseFuture;
 import org.apache.rocketmq.remoting.protocol.RemotingCommand;
 
+import java.nio.ByteBuffer;
+import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
+
+/**
+ * 管理功能服务
+ */
 public class MQAdminImpl {
 
     private final InternalLogger log = ClientLogger.getLog();
     private final MQClientInstance mQClientFactory;
+    @Getter
+    @Setter
     private long timeoutMillis = 6000;
 
     public MQAdminImpl(MQClientInstance mQClientFactory) {
         this.mQClientFactory = mQClientFactory;
     }
 
-    public long getTimeoutMillis() {
-        return timeoutMillis;
-    }
-
-    public void setTimeoutMillis(long timeoutMillis) {
-        this.timeoutMillis = timeoutMillis;
-    }
-
+    //region 创建topic 【向所有broker组下master发送topic创建请求？？？】
     public void createTopic(String key, String newTopic, int queueNum) throws MQClientException {
         createTopic(key, newTopic, queueNum, 0);
     }
@@ -137,13 +112,14 @@ public class MQAdminImpl {
             throw new MQClientException("create new topic failed", e);
         }
     }
+    //endregion
 
     public List<MessageQueue> fetchPublishMessageQueues(String topic) throws MQClientException {
         try {
             TopicRouteData topicRouteData = this.mQClientFactory.getMQClientAPIImpl().getTopicRouteInfoFromNameServer(topic, timeoutMillis);
             if (topicRouteData != null) {
                 TopicPublishInfo topicPublishInfo = MQClientInstance.topicRouteData2TopicPublishInfo(topic, topicRouteData);
-                if (topicPublishInfo != null && topicPublishInfo.ok()) {
+                if (topicPublishInfo.ok()) {
                     return parsePublishMessageQueues(topicPublishInfo.getMessageQueueList());
                 }
             }
@@ -155,7 +131,7 @@ public class MQAdminImpl {
     }
 
     public List<MessageQueue> parsePublishMessageQueues(List<MessageQueue> messageQueueList) {
-        List<MessageQueue> resultQueues = new ArrayList<MessageQueue>();
+        List<MessageQueue> resultQueues = new ArrayList<>();
         for (MessageQueue queue : messageQueueList) {
             String userTopic = NamespaceUtil.withoutNamespace(queue.getTopic(), this.mQClientFactory.getClientConfig().getNamespace());
             resultQueues.add(new MessageQueue(userTopic, queue.getBrokerName(), queue.getQueueId()));

@@ -1,11 +1,12 @@
 package org.apache.rocketmq.client.consumer;
 
-import java.util.Set;
-
 import org.apache.rocketmq.common.message.MessageQueue;
 
+import java.util.Set;
+
 /**
- * A MessageQueueListener is implemented by the application and may be specified when a message queue changed
+ * 分配消费queue变化监听器
+ * litepull型消费者使用该监听器用于重平衡后跟新指定拉取queue并启动或更新拉取任务
  */
 public interface MessageQueueListener {
     /**

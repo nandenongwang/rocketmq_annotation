@@ -19,6 +19,10 @@ import org.apache.rocketmq.remoting.RPCHook;
 import java.util.Collection;
 import java.util.List;
 
+/**
+ * litepull消费者
+ * 维护该类型消费配置、功能主要转发到defaultLitePullConsumerImpl实现
+ */
 public class DefaultLitePullConsumer extends ClientConfig implements LitePullConsumer {
 
     private final DefaultLitePullConsumerImpl defaultLitePullConsumerImpl;
@@ -111,6 +115,7 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
     /**
      * Maximum commit offset interval time in milliseconds.
      */
+    @Getter
     private long autoCommitIntervalMillis = 5 * 1000;
 
     /**
@@ -297,8 +302,7 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
     }
 
     @Override
-    public void registerTopicMessageQueueChangeListener(String topic,
-                                                        TopicMessageQueueChangeListener topicMessageQueueChangeListener) throws MQClientException {
+    public void registerTopicMessageQueueChangeListener(String topic, TopicMessageQueueChangeListener topicMessageQueueChangeListener) throws MQClientException {
         this.defaultLitePullConsumerImpl.registerTopicMessageQueueChangeListener(withNamespace(topic), topicMessageQueueChangeListener);
     }
 
@@ -341,10 +345,6 @@ public class DefaultLitePullConsumer extends ClientConfig implements LitePullCon
 
     public void setDefaultBrokerId(long defaultBrokerId) {
         this.defaultLitePullConsumerImpl.getPullAPIWrapper().setDefaultBrokerId(defaultBrokerId);
-    }
-
-    public long getAutoCommitIntervalMillis() {
-        return autoCommitIntervalMillis;
     }
 
     public void setAutoCommitIntervalMillis(long autoCommitIntervalMillis) {

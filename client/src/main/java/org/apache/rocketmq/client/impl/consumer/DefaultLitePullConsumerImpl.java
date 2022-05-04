@@ -55,7 +55,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
     @Getter
     private PullAPIWrapper pullAPIWrapper;
-
+    @Getter
     private OffsetStore offsetStore;
 
     private final RebalanceImpl rebalanceImpl = new RebalanceLitePullImpl(this);
@@ -87,7 +87,7 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
      * Delay some time when suspend pull service
      */
     private static final long PULL_TIME_DELAY_MILLS_WHEN_PAUSE = 1000;
-
+    @Getter
     private final DefaultLitePullConsumer defaultLitePullConsumer;
 
     /**
@@ -176,6 +176,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         startPullTask(mqNewSet);
     }
 
+    /**
+     * 订阅模式下分配消费queue变化监听器
+     */
     class MessageQueueListenerImpl implements MessageQueueListener {
         @Override
         public void messageQueueChanged(String topic, Set<MessageQueue> mqAll, Set<MessageQueue> mqDivided) {
@@ -195,6 +198,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 关闭消费者
+     */
     public synchronized void shutdown() {
         switch (this.serviceState) {
             case CREATE_JUST:
@@ -213,6 +219,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 消费者是否处于运行中
+     */
     public synchronized boolean isRunning() {
         return this.serviceState == ServiceState.RUNNING;
     }
@@ -409,14 +418,16 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 订阅topic消息
+     */
     public synchronized void subscribe(String topic, String subExpression) throws MQClientException {
         try {
             if (topic == null || topic.equals("")) {
                 throw new IllegalArgumentException("Topic can not be null or empty.");
             }
             setSubscriptionType(SubscriptionType.SUBSCRIBE);
-            SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(defaultLitePullConsumer.getConsumerGroup(),
-                    topic, subExpression);
+            SubscriptionData subscriptionData = FilterAPI.buildSubscriptionData(defaultLitePullConsumer.getConsumerGroup(), topic, subExpression);
             this.rebalanceImpl.getSubscriptionInner().put(topic, subscriptionData);
             this.defaultLitePullConsumer.setMessageQueueListener(new MessageQueueListenerImpl());
             assignedMessageQueue.setRebalanceImpl(this.rebalanceImpl);
@@ -832,16 +843,25 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     *
+     */
     private PullResult pull(MessageQueue mq, SubscriptionData subscriptionData, long offset, int maxNums)
             throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return pull(mq, subscriptionData, offset, maxNums, this.defaultLitePullConsumer.getConsumerPullTimeoutMillis());
     }
 
+    /**
+     *
+     */
     private PullResult pull(MessageQueue mq, SubscriptionData subscriptionData, long offset, int maxNums, long timeout)
             throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
         return this.pullSyncImpl(mq, subscriptionData, offset, maxNums, true, timeout);
     }
 
+    /**
+     *
+     */
     private PullResult pullSyncImpl(MessageQueue mq, SubscriptionData subscriptionData, long offset, int maxNums, boolean block, long timeout)
             throws MQClientException, RemotingException, MQBrokerException, InterruptedException {
 
@@ -880,6 +900,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         return pullResult;
     }
 
+    /**
+     *
+     */
     private void resetTopic(List<MessageExt> msgList) {
         if (null == msgList || msgList.size() == 0) {
             return;
@@ -894,6 +917,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
 
     }
 
+    /**
+     *
+     */
     public void updateConsumeOffset(MessageQueue mq, long offset) {
         checkServiceState();
         this.offsetStore.updateOffset(mq, offset, false);
@@ -932,6 +958,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     * 持久化所有queue的消费进度
+     */
     @Override
     public void persistConsumerOffset() {
         try {
@@ -972,11 +1001,15 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         return false;
     }
 
+
     @Override
     public boolean isUnitMode() {
         return this.defaultLitePullConsumer.isUnitMode();
     }
 
+    /**
+     *
+     */
     @Override
     public ConsumerRunningInfo consumerRunningInfo() {
         ConsumerRunningInfo info = new ConsumerRunningInfo();
@@ -989,25 +1022,26 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         return info;
     }
 
+    /**
+     *
+     */
     private void updateConsumeOffsetToBroker(MessageQueue mq, long offset, boolean isOneway) throws RemotingException,
             MQBrokerException, InterruptedException, MQClientException {
         this.offsetStore.updateConsumeOffsetToBroker(mq, offset, isOneway);
     }
 
-    public OffsetStore getOffsetStore() {
-        return offsetStore;
-    }
-
-    public DefaultLitePullConsumer getDefaultLitePullConsumer() {
-        return defaultLitePullConsumer;
-    }
-
+    /**
+     *
+     */
     public Set<MessageQueue> fetchMessageQueues(String topic) throws MQClientException {
         checkServiceState();
         Set<MessageQueue> result = this.mQClientFactory.getMQAdminImpl().fetchSubscribeMessageQueues(topic);
         return parseMessageQueues(result);
     }
 
+    /**
+     *
+     */
     private synchronized void fetchTopicMessageQueuesAndCompare() throws MQClientException {
         for (Map.Entry<String, TopicMessageQueueChangeListener> entry : topicMessageQueueChangeListenerMap.entrySet()) {
             String topic = entry.getKey();
@@ -1024,6 +1058,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     *
+     */
     private boolean isSetEqual(Set<MessageQueue> set1, Set<MessageQueue> set2) {
         if (set1 == null && set2 == null) {
             return true;
@@ -1044,6 +1081,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         return isEqual;
     }
 
+    /**
+     *
+     */
     public synchronized void registerTopicMessageQueueChangeListener(String topic, TopicMessageQueueChangeListener listener) throws MQClientException {
         if (topic == null || listener == null) {
             throw new MQClientException("Topic or listener is null", null);
@@ -1058,6 +1098,9 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         }
     }
 
+    /**
+     *
+     */
     private Set<MessageQueue> parseMessageQueues(Set<MessageQueue> queueSet) {
         Set<MessageQueue> resultQueues = new HashSet<>();
         for (MessageQueue messageQueue : queueSet) {
@@ -1067,11 +1110,26 @@ public class DefaultLitePullConsumerImpl implements MQConsumerInner {
         return resultQueues;
     }
 
+    /**
+     * 消费请求
+     */
     @AllArgsConstructor
     @Data
     public static class ConsumeRequest {
+
+        /**
+         * 拉取到的消息
+         */
         private final List<MessageExt> messageExts;
+
+        /**
+         * 拉取queue
+         */
         private final MessageQueue messageQueue;
+
+        /**
+         * 处理queue
+         */
         private final ProcessQueue processQueue;
     }
 }

@@ -241,7 +241,7 @@ public abstract class RebalanceImpl {
     }
 
     /**
-     * 按consumer订阅topic依次重平衡 然后移除不在订阅中的topic的queue并drop processqueue
+     * 对所有topic进行重平衡 移除不在订阅关系中的topic下属queue并drop其处理queue
      */
     public void doRebalance(final boolean isOrder) {
         Map<String/* topic */, SubscriptionData> subTable = this.getSubscriptionInner();
